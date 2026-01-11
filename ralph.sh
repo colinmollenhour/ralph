@@ -10,15 +10,17 @@ show_help() {
 Ralph - Autonomous AI agent loop for completing PRD user stories
 
 USAGE:
-  ralph.sh [OPTIONS] [max_iterations]
+  ralph.sh [OPTIONS] [max_iterations] [-- tool_args...]
 
 OPTIONS:
   --tool <name>    AI tool to use: amp, claude, or opencode (default: amp)
   --stop           Signal Ralph to stop before the next iteration
   --help, -h       Show this help message
+  --               Everything after -- is passed to the tool as additional arguments
 
 ARGUMENTS:
   max_iterations   Maximum iterations to run (default: 10)
+  tool_args        Additional arguments to pass to the tool (after --)
 
 FLOW:
   ┌─────────────────┐    ralph skill     ┌─────────────────────┐    ralph.sh     ┌─────────────┐
@@ -35,6 +37,8 @@ EXAMPLES:
   ralph.sh --tool claude 20       # Run with Claude Code, 20 iterations
   ralph.sh --tool opencode        # Run with OpenCode, 10 iterations
   ralph.sh --stop                 # Stop Ralph before the next iteration
+  ralph.sh --tool claude -- --model opus  # Pass --model opus to claude
+  ralph.sh 15 -- --verbose        # Run 15 iterations with --verbose passed to tool
 
 REQUIREMENTS:
   - prd.json must exist in the current directory
@@ -47,6 +51,7 @@ EOF
 # Parse arguments
 TOOL="amp"  # Default to amp for backwards compatibility
 MAX_ITERATIONS=10
+TOOL_ARGS=()  # Additional args to pass to the tool
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -65,6 +70,12 @@ while [[ $# -gt 0 ]]; do
     --tool=*)
       TOOL="${1#*=}"
       shift
+      ;;
+    --)
+      # Everything after -- is passed to the tool
+      shift
+      TOOL_ARGS=("$@")
+      break
       ;;
     *)
       # Assume it's max_iterations if it's a number
@@ -127,6 +138,32 @@ if ! command -v sponge &> /dev/null; then
   exit 1
 fi
 
+# Helper function to initialize progress file header
+init_progress_header() {
+  local prd_file="$1"
+  local tool="$2"
+  local tool_args="$3"
+
+  echo "# Ralph Progress Log"
+  echo "Started: $(date)"
+  echo "Tool: $tool"
+
+  # Add tool args if present
+  if [[ -n "$tool_args" ]]; then
+    echo "Tool args: $tool_args"
+  fi
+
+  # Extract and add source from prd.json if present
+  if [ -f "$prd_file" ]; then
+    local source=$(jq -r '.source // empty' "$prd_file" 2>/dev/null || echo "")
+    if [[ -n "$source" ]]; then
+      echo "Source PRD: $source"
+    fi
+  fi
+
+  echo "---"
+}
+
 # Archive previous run if branch changed
 if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
   CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
@@ -144,11 +181,9 @@ if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
     [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_FOLDER/"
     [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/"
     echo "   Archived to: $ARCHIVE_FOLDER"
-    
+
     # Reset progress file for new run
-    echo "# Ralph Progress Log" > "$PROGRESS_FILE"
-    echo "Started: $(date)" >> "$PROGRESS_FILE"
-    echo "---" >> "$PROGRESS_FILE"
+    init_progress_header "$PRD_FILE" "$TOOL" "${TOOL_ARGS[*]}" > "$PROGRESS_FILE"
   fi
 fi
 
@@ -162,9 +197,7 @@ fi
 
 # Initialize progress file if it doesn't exist
 if [ ! -f "$PROGRESS_FILE" ]; then
-  echo "# Ralph Progress Log" > "$PROGRESS_FILE"
-  echo "Started: $(date)" >> "$PROGRESS_FILE"
-  echo "---" >> "$PROGRESS_FILE"
+  init_progress_header "$PRD_FILE" "$TOOL" "${TOOL_ARGS[*]}" > "$PROGRESS_FILE"
 fi
 
 # Generate the prompt - conditionally include AMP thread URL section
@@ -312,13 +345,13 @@ for i in $(seq 1 $MAX_ITERATIONS); do
 
   # Run the selected tool with the ralph prompt
   if [[ "$TOOL" == "amp" ]]; then
-    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all 2>&1 | tee /dev/stderr) || true
+    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
   elif [[ "$TOOL" == "claude" ]]; then
     # Claude Code: use --dangerously-skip-permissions for autonomous operation, --print for output
-    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print 2>&1 | tee /dev/stderr) || true
+    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
   else
     # OpenCode: use run command for non-interactive mode
-    OUTPUT=$("$TOOL_CMD" run "$PROMPT" 2>&1 | tee /dev/stderr) || true
+    OUTPUT=$("$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
   fi
   
   # Check for completion signal
