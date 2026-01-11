@@ -21,6 +21,7 @@ OPTIONS:
   --tool <name>          AI tool to use: amp, claude, or opencode (default: amp)
   --tool-path <path>     Explicit path to tool executable (overrides auto-detection)
   --custom-prompt <file> Use a custom prompt file instead of the embedded default
+  --eject-prompt         Create .agents/ralph.md with the default prompt for customization
   --stop                 Signal Ralph to stop before the next iteration
   --help, -h             Show this help message
   --                     Everything after -- is passed to the tool as additional arguments
@@ -58,6 +59,18 @@ REQUIREMENTS:
   - prd.json must exist in the current directory
   - Use the 'ralph' skill to convert a PRD markdown file to prd.json
 
+GETTING STARTED:
+  Sample prompts to use in your AI tool before running ralph.sh:
+
+  1. Create a PRD from scratch:
+     > Use the prd skill and create a PRD for adding user authentication
+
+  2. Convert an existing plan to prd.json:
+     > Use the ralph skill to convert @plans/my-feature.md to ./prd.json
+
+  3. After creating prd.json, run Ralph:
+     $ ./ralph.sh
+
 CUSTOMIZING THE PROMPT:
   Ralph uses prompts in this priority order:
   1. --custom-prompt <file> (explicit flag)
@@ -65,8 +78,8 @@ CUSTOMIZING THE PROMPT:
   3. Embedded default prompt
 
   To customize for your project:
-  1. Copy prompt-template.md to .agents/ralph.md in your project
-  2. Modify it for your needs
+  1. Run: ./ralph.sh --eject-prompt
+  2. Edit .agents/ralph.md for your needs
   3. Ralph will automatically use it
 
 EXIT CODES:
@@ -84,11 +97,17 @@ MAX_ITERATIONS=50
 TOOL_ARGS=()  # Additional args to pass to the tool
 CUSTOM_PROMPT=""  # Optional custom prompt file
 TOOL_PATH=""  # Optional explicit path to tool executable
+EJECT_PROMPT_FLAG=false  # Flag for --eject-prompt
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --help|-h)
       show_help
+      ;;
+    --eject-prompt)
+      # Set flag to eject prompt after functions are defined
+      EJECT_PROMPT_FLAG=true
+      shift
       ;;
     --stop)
       touch "./.ralph-stop"
@@ -184,8 +203,8 @@ ARCHIVE_DIR="./archive"
 LAST_BRANCH_FILE="./.last-branch"
 STOP_FILE="./.ralph-stop"
 
-# Validate prd.json exists in current directory
-if [ ! -f "$PRD_FILE" ]; then
+# Validate prd.json exists in current directory (skip for --eject-prompt)
+if [ "$EJECT_PROMPT_FLAG" != true ] && [ ! -f "$PRD_FILE" ]; then
   echo "Error: prd.json not found in current directory."
   echo "Ralph must be run from a project root containing prd.json"
   echo ""
@@ -414,6 +433,27 @@ If there are still stories with `passes: false`, end your response normally (ano
 - Read the Codebase Patterns section in progress.txt before starting
 PROMPT_END
 }
+
+# Handle --eject-prompt flag (now that generate_prompt is defined)
+if [ "$EJECT_PROMPT_FLAG" = true ]; then
+  EJECT_DIR=".agents"
+  EJECT_FILE="$EJECT_DIR/ralph.md"
+  
+  if [ -f "$EJECT_FILE" ]; then
+    echo "Error: $EJECT_FILE already exists."
+    echo "Delete it first if you want to regenerate it."
+    exit 1
+  fi
+  
+  mkdir -p "$EJECT_DIR"
+  generate_prompt "amp" > "$EJECT_FILE"  # Use 'amp' as default for generating template
+  
+  echo "Created $EJECT_FILE"
+  echo ""
+  echo "This file will now be used automatically when running ralph.sh"
+  echo "Edit it to customize the prompt for your project."
+  exit 0
+fi
 
 # Check for project-local prompt template and show message once
 if [[ -z "$CUSTOM_PROMPT" ]] && [[ -f ".agents/ralph.md" ]]; then
