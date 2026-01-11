@@ -282,8 +282,17 @@ PROMPT_START
   - Useful context (e.g., "the evaluation panel is in component X")
 ---
 ```
+PROMPT_END
+
+  # Conditionally include thread URL explanation for Amp only
+  if [[ "$tool" == "amp" ]]; then
+    cat << 'PROMPT_END'
 
 Include the thread URL so future iterations can use the `read_thread` tool to reference previous work if needed.
+PROMPT_END
+  fi
+
+  cat << 'PROMPT_END'
 
 The learnings section is critical - it helps future iterations avoid repeating mistakes and understand the codebase better.
 
