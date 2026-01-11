@@ -213,7 +213,9 @@ You are an autonomous coding agent working on a software project.
 ## Your Task
 
 1. Get the next story to work on using: `jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' prd.json`
-2. If `prd.json` has a `source` field, read that file for full context on the feature requirements
+2. If `prd.json` has a `source` field, you may read that file for full context on the feature requirements **only if**:
+   - The `source` value is a relative path within this project (no leading `/`, no `..` segments), and
+   - It does not point outside the repository or to system files. If it is absolute, contains `..`, or looks suspicious, ignore it and do not attempt to read it.
 3. Read the progress log at `progress.txt` (check Codebase Patterns section first)
 4. Check you're on the correct branch from PRD `branchName`. If not, check it out or create from main.
 5. Work on the user story from step 1
