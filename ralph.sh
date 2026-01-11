@@ -19,6 +19,7 @@ USAGE:
 
 OPTIONS:
   --tool <name>          AI tool to use: amp, claude, or opencode (default: amp)
+  --tool-path <path>     Explicit path to tool executable (overrides auto-detection)
   --custom-prompt <file> Use a custom prompt file instead of the embedded default
   --stop                 Signal Ralph to stop before the next iteration
   --help, -h             Show this help message
@@ -46,6 +47,8 @@ EXAMPLES:
   ralph.sh --tool claude -- --model opus  # Pass --model opus to claude
   ralph.sh 15 -- --verbose        # Run 15 iterations with --verbose passed to tool
   ralph.sh --custom-prompt my-prompt.md   # Use a custom prompt file
+  ralph.sh --tool claude --tool-path ~/.claude/local/claude  # Use local Claude installation
+  ralph.sh --tool-path /usr/local/bin/amp  # Use specific amp binary
 
 REQUIREMENTS:
   - prd.json must exist in the current directory
@@ -71,6 +74,7 @@ TOOL="amp"  # Default to amp for backwards compatibility
 MAX_ITERATIONS=10
 TOOL_ARGS=()  # Additional args to pass to the tool
 CUSTOM_PROMPT=""  # Optional custom prompt file
+TOOL_PATH=""  # Optional explicit path to tool executable
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -88,6 +92,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --tool=*)
       TOOL="${1#*=}"
+      shift
+      ;;
+    --tool-path)
+      TOOL_PATH="$2"
+      shift 2
+      ;;
+    --tool-path=*)
+      TOOL_PATH="${1#*=}"
       shift
       ;;
     --custom-prompt)
@@ -123,16 +135,30 @@ if [[ "$TOOL" != "amp" && "$TOOL" != "claude" && "$TOOL" != "opencode" ]]; then
   exit 1
 fi
 
-# Check if the selected tool exists (using type to detect aliases, functions, and executables)
+# Check if the selected tool exists
 TOOL_CMD="$TOOL"  # Default to the tool name
-if ! type "$TOOL" &> /dev/null; then
-  # Special case for claude: check for local installation
+
+if [[ -n "$TOOL_PATH" ]]; then
+  # Use explicit tool path if provided
+  if [[ ! -f "$TOOL_PATH" ]]; then
+    echo "Error: Tool path not found: $TOOL_PATH"
+    exit 1
+  fi
+  if [[ ! -x "$TOOL_PATH" ]]; then
+    echo "Error: Tool path is not executable: $TOOL_PATH"
+    exit 1
+  fi
+  TOOL_CMD="$TOOL_PATH"
+  echo "Using explicit tool path: $TOOL_PATH"
+elif ! type "$TOOL" &> /dev/null; then
+  # Tool not in PATH, check for known fallback locations
   if [[ "$TOOL" == "claude" ]] && [[ -f "$HOME/.claude/local/claude" ]]; then
     echo "Using local Claude installation: ~/.claude/local/claude"
     TOOL_CMD="$HOME/.claude/local/claude"
   else
     echo "Error: Tool '$TOOL' is not available."
     echo "Please install or configure '$TOOL' before running Ralph."
+    echo "Alternatively, use --tool-path to specify the exact path to the tool."
     exit 1
   fi
 fi
