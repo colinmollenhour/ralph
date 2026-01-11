@@ -81,6 +81,20 @@ if [[ "$TOOL" != "amp" && "$TOOL" != "claude" && "$TOOL" != "opencode" ]]; then
   echo "Error: Invalid tool '$TOOL'. Must be 'amp', 'claude', or 'opencode'."
   exit 1
 fi
+
+# Check if the selected tool exists (using type to detect aliases, functions, and executables)
+TOOL_CMD="$TOOL"  # Default to the tool name
+if ! type "$TOOL" &> /dev/null; then
+  # Special case for claude: check for local installation
+  if [[ "$TOOL" == "claude" ]] && [[ -f "$HOME/.claude/local/claude" ]]; then
+    echo "Using local Claude installation: ~/.claude/local/claude"
+    TOOL_CMD="$HOME/.claude/local/claude"
+  else
+    echo "Error: Tool '$TOOL' is not available."
+    echo "Please install or configure '$TOOL' before running Ralph."
+    exit 1
+  fi
+fi
 # All paths relative to current working directory (project root)
 PRD_FILE="./prd.json"
 PROGRESS_FILE="./progress.txt"
@@ -298,13 +312,13 @@ for i in $(seq 1 $MAX_ITERATIONS); do
 
   # Run the selected tool with the ralph prompt
   if [[ "$TOOL" == "amp" ]]; then
-    OUTPUT=$(echo "$PROMPT" | amp --dangerously-allow-all 2>&1 | tee /dev/stderr) || true
+    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all 2>&1 | tee /dev/stderr) || true
   elif [[ "$TOOL" == "claude" ]]; then
     # Claude Code: use --dangerously-skip-permissions for autonomous operation, --print for output
-    OUTPUT=$(echo "$PROMPT" | claude --dangerously-skip-permissions --print 2>&1 | tee /dev/stderr) || true
+    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print 2>&1 | tee /dev/stderr) || true
   else
     # OpenCode: use run command for non-interactive mode
-    OUTPUT=$(opencode run "$PROMPT" 2>&1 | tee /dev/stderr) || true
+    OUTPUT=$("$TOOL_CMD" run "$PROMPT" 2>&1 | tee /dev/stderr) || true
   fi
   
   # Check for completion signal
