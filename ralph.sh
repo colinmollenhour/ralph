@@ -390,7 +390,11 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
   else
     # OpenCode: use run command for non-interactive mode
-    OUTPUT=$("$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+    if ((${#TOOL_ARGS[@]})); then
+      OUTPUT=$("$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+    else
+      OUTPUT=$("$TOOL_CMD" run "$PROMPT" 2>&1 | tee /dev/stderr) || true
+    fi
   fi
   
   # Check for completion signal
