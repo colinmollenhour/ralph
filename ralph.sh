@@ -33,11 +33,22 @@ if [[ "$TOOL" != "amp" && "$TOOL" != "claude" && "$TOOL" != "opencode" ]]; then
   echo "Error: Invalid tool '$TOOL'. Must be 'amp', 'claude', or 'opencode'."
   exit 1
 fi
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PRD_FILE="$SCRIPT_DIR/prd.json"
-PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
-ARCHIVE_DIR="$SCRIPT_DIR/archive"
-LAST_BRANCH_FILE="$SCRIPT_DIR/.last-branch"
+# All paths relative to current working directory (project root)
+PRD_FILE="./prd.json"
+PROGRESS_FILE="./progress.txt"
+ARCHIVE_DIR="./archive"
+LAST_BRANCH_FILE="./.last-branch"
+
+# Validate prd.json exists in current directory
+if [ ! -f "$PRD_FILE" ]; then
+  echo "Error: prd.json not found in current directory."
+  echo "Ralph must be run from a project root containing prd.json"
+  echo ""
+  echo "Usage: Run from a directory with prd.json, e.g.:"
+  echo "  cd /path/to/your/project"
+  echo "  /path/to/ralph.sh [--tool amp|claude|opencode] [max_iterations]"
+  exit 1
+fi
 
 # Archive previous run if branch changed
 if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
@@ -91,16 +102,17 @@ You are an autonomous coding agent working on a software project.
 
 ## Your Task
 
-1. Read the PRD at `prd.json` (in the same directory as this file)
-2. Read the progress log at `progress.txt` (check Codebase Patterns section first)
-3. Check you're on the correct branch from PRD `branchName`. If not, check it out or create from main.
-4. Pick the **highest priority** user story where `passes: false`
-5. Implement that single user story
-6. Run quality checks (e.g., typecheck, lint, test - use whatever your project requires)
-7. Update AGENTS.md files if you discover reusable patterns (see below)
-8. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
-9. Update the PRD to set `passes: true` for the completed story
-10. Append your progress to `progress.txt`
+1. Read the PRD at `prd.json`
+2. If `prd.json` has a `source` field, read that file for full context on the feature requirements
+3. Read the progress log at `progress.txt` (check Codebase Patterns section first)
+4. Check you're on the correct branch from PRD `branchName`. If not, check it out or create from main.
+5. Pick the **highest priority** user story where `passes: false`
+6. Implement that single user story
+7. Run quality checks (e.g., typecheck, lint, test - use whatever your project requires)
+8. Update AGENTS.md files if you discover reusable patterns (see below)
+9. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
+10. Update the PRD to set `passes: true` for the completed story
+11. Append your progress to `progress.txt`
 
 ## Progress Report Format
 
