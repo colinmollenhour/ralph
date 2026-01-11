@@ -91,8 +91,17 @@ If no browser tools are available, note in your progress report that manual brow
 
 After completing a user story, check if ALL stories have `passes: true`.
 
-If ALL stories are complete and passing, reply with:
-<promise>COMPLETE</promise>
+If ALL stories are complete and passing:
+1. **Perform cleanup commit** - Remove Ralph working files that are no longer needed:
+   - Read the `source` field from `prd.json` (if it exists) to get the source PRD path
+   - Run: `git rm -f prd.json progress.txt`
+   - If a source file was specified: `git rm -f <source-file>`
+   - Run: `git rm -f .last-branch 2>/dev/null || rm -f .last-branch` (remove if tracked, else delete)
+   - Commit with message: `chore: cleanup ralph working files`
+2. Then reply with: <promise>COMPLETE</promise>
+
+The cleanup commit can be reverted with `git revert HEAD` if needed.
+To recover the source PRD: `git checkout HEAD~1 -- <source-file>`
 
 If there are still stories with `passes: false`, end your response normally (another iteration will pick up the next story).
 

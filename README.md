@@ -202,18 +202,46 @@ git log --oneline -10
 
 ## Customizing the Prompt
 
-Ralph uses an embedded default prompt, but you can provide your own:
+Ralph looks for prompts in this order:
+1. `--custom-prompt <file>` - Explicit flag takes highest priority
+2. `.agents/ralph.md` - Project-local template (if exists)
+3. Embedded default prompt
 
-1. Copy `prompt-template.md` from the Ralph repo to your project
-2. Customize it for your project:
-   - Add project-specific quality check commands
-   - Include codebase conventions
-   - Add common gotchas for your stack
-3. Run Ralph with the `--custom-prompt` flag:
+To customize for your project:
+1. Copy `prompt-template.md` to `.agents/ralph.md` in your project root
+2. Modify it for your needs  
+3. Ralph will automatically use it
 
+Example:
 ```bash
-./ralph.sh --custom-prompt ./my-prompt.md
+# Copy the template
+cp /path/to/ralph/prompt-template.md .agents/ralph.md
+
+# Edit it for your project
+vim .agents/ralph.md
+
+# Ralph will now use it automatically
+./ralph.sh
 ```
+
+### Post-Completion Cleanup
+
+When all stories are complete, Ralph automatically removes working files in a final commit:
+- `prd.json` - The task list
+- `progress.txt` - The iteration log
+- `.last-branch` - Branch tracking file
+- The source PRD file (if specified in `prd.json`)
+
+**This cleanup commit can be reverted:**
+```bash
+# Undo the cleanup
+git revert HEAD
+
+# Recover just the source PRD
+git checkout HEAD~1 -- plans/my-feature.md
+```
+
+**To disable cleanup:** Create a custom prompt template (`.agents/ralph.md`) without the cleanup instructions in the Stop Condition section.
 
 ## Archiving
 

@@ -55,10 +55,15 @@ REQUIREMENTS:
   - Use the 'ralph' skill to convert a PRD markdown file to prd.json
 
 CUSTOMIZING THE PROMPT:
-  By default, Ralph uses an embedded prompt. To customize:
-  1. Copy prompt-template.md from the Ralph repo to your project
+  Ralph uses prompts in this priority order:
+  1. --custom-prompt <file> (explicit flag)
+  2. .agents/ralph.md (project-local template, if exists)
+  3. Embedded default prompt
+
+  To customize for your project:
+  1. Copy prompt-template.md to .agents/ralph.md in your project
   2. Modify it for your needs
-  3. Run with: ralph.sh --custom-prompt your-prompt.md
+  3. Ralph will automatically use it
 
 EXIT CODES:
   0 - All stories completed successfully
@@ -383,8 +388,17 @@ A frontend story is NOT complete until browser verification passes.
 
 After completing a user story, check if ALL stories have `passes: true`.
 
-If ALL stories are complete and passing, reply with:
-<promise>COMPLETE</promise>
+If ALL stories are complete and passing:
+1. **Perform cleanup commit** - Remove Ralph working files that are no longer needed:
+   - Read the `source` field from `prd.json` (if it exists) to get the source PRD path
+   - Run: `git rm -f prd.json progress.txt`
+   - If a source file was specified: `git rm -f <source-file>`
+   - Run: `git rm -f .last-branch 2>/dev/null || rm -f .last-branch` (remove if tracked, else delete)
+   - Commit with message: `chore: cleanup ralph working files`
+2. Then reply with: <promise>COMPLETE</promise>
+
+The cleanup commit can be reverted with `git revert HEAD` if needed.
+To recover the source PRD: `git checkout HEAD~1 -- <source-file>`
 
 If there are still stories with `passes: false`, end your response normally (another iteration will pick up the next story).
 
@@ -396,6 +410,11 @@ If there are still stories with `passes: false`, end your response normally (ano
 - Read the Codebase Patterns section in progress.txt before starting
 PROMPT_END
 }
+
+# Check for project-local prompt template and show message once
+if [[ -z "$CUSTOM_PROMPT" ]] && [[ -f ".agents/ralph.md" ]]; then
+  echo "Using project-local prompt: .agents/ralph.md"
+fi
 
 echo "Starting Ralph - Tool: $TOOL - Max iterations: $MAX_ITERATIONS"
 
@@ -413,9 +432,11 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   echo "  Ralph Iteration $i of $MAX_ITERATIONS ($TOOL)"
   echo "==============================================================="
 
-  # Generate the prompt - use custom prompt file if provided, otherwise generate
+  # Generate the prompt - priority: --custom-prompt > .agents/ralph.md > embedded default
   if [[ -n "$CUSTOM_PROMPT" ]]; then
     PROMPT=$(cat "$CUSTOM_PROMPT")
+  elif [[ -f ".agents/ralph.md" ]]; then
+    PROMPT=$(cat ".agents/ralph.md")
   else
     PROMPT=$(generate_prompt "$TOOL")
   fi
@@ -440,6 +461,10 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     echo ""
     echo "Ralph completed all tasks!"
     echo "Completed at iteration $i of $MAX_ITERATIONS"
+    echo ""
+    echo "Working files have been cleaned up in a separate commit."
+    echo "To undo cleanup: git revert HEAD"
+    echo "To recover source PRD: git checkout HEAD~1 -- <source-file>"
     exit 0
   fi
   
