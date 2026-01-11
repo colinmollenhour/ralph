@@ -1,6 +1,11 @@
 #!/bin/bash
 # Ralph Wiggum - Long-running AI agent loop
 # Usage: ./ralph.sh [--tool amp|claude|opencode] [max_iterations]
+#
+# Exit codes:
+#   0 - All stories completed successfully
+#   1 - Error occurred (invalid arguments, missing dependencies, max iterations reached)
+#   2 - Gracefully stopped by user (--stop flag)
 
 set -e
 
@@ -51,6 +56,11 @@ CUSTOMIZING THE PROMPT:
   1. Copy prompt-template.md from the Ralph repo to your project
   2. Modify it for your needs
   3. Run with: ralph.sh --custom-prompt your-prompt.md
+
+EXIT CODES:
+  0 - All stories completed successfully
+  1 - Error occurred (invalid arguments, missing dependencies, max iterations reached)
+  2 - Gracefully stopped by user (--stop flag)
 
 EOF
   exit 0
