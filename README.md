@@ -140,7 +140,6 @@ Ralph will:
 | File | Purpose |
 |------|---------|
 | `ralph.sh` | The bash loop that spawns fresh AI instances (supports `--tool amp`, `--tool claude`, or `--tool opencode`) |
-| `prompt-template.md` | Template for creating custom prompts (copy and modify for your project) |
 | `prd.json` | User stories with `passes` status (the task list) |
 | `prd.json.example` | Example PRD format for reference |
 | `progress.txt` | Append-only learnings for future iterations |
@@ -233,21 +232,9 @@ Ralph looks for prompts in this order:
 3. Embedded default prompt
 
 To customize for your project:
-1. Copy `prompt-template.md` to `.agents/ralph.md` in your project root
+1. Run `ralph.sh --eject-prompt` which will create `.agents/ralph.md`
 2. Modify it for your needs  
 3. Ralph will automatically use it
-
-Example:
-```bash
-# Copy the template
-cp /path/to/ralph/prompt-template.md .agents/ralph.md
-
-# Edit it for your project
-vim .agents/ralph.md
-
-# Ralph will now use it automatically
-./ralph.sh
-```
 
 ### Post-Completion Cleanup
 
