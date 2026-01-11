@@ -13,10 +13,11 @@ USAGE:
   ralph.sh [OPTIONS] [max_iterations] [-- tool_args...]
 
 OPTIONS:
-  --tool <name>    AI tool to use: amp, claude, or opencode (default: amp)
-  --stop           Signal Ralph to stop before the next iteration
-  --help, -h       Show this help message
-  --               Everything after -- is passed to the tool as additional arguments
+  --tool <name>          AI tool to use: amp, claude, or opencode (default: amp)
+  --custom-prompt <file> Use a custom prompt file instead of the embedded default
+  --stop                 Signal Ralph to stop before the next iteration
+  --help, -h             Show this help message
+  --                     Everything after -- is passed to the tool as additional arguments
 
 ARGUMENTS:
   max_iterations   Maximum iterations to run (default: 10)
@@ -39,10 +40,17 @@ EXAMPLES:
   ralph.sh --stop                 # Stop Ralph before the next iteration
   ralph.sh --tool claude -- --model opus  # Pass --model opus to claude
   ralph.sh 15 -- --verbose        # Run 15 iterations with --verbose passed to tool
+  ralph.sh --custom-prompt my-prompt.md   # Use a custom prompt file
 
 REQUIREMENTS:
   - prd.json must exist in the current directory
   - Use the 'ralph' skill to convert a PRD markdown file to prd.json
+
+CUSTOMIZING THE PROMPT:
+  By default, Ralph uses an embedded prompt. To customize:
+  1. Copy prompt-template.md from the Ralph repo to your project
+  2. Modify it for your needs
+  3. Run with: ralph.sh --custom-prompt your-prompt.md
 
 EOF
   exit 0
@@ -52,6 +60,7 @@ EOF
 TOOL="amp"  # Default to amp for backwards compatibility
 MAX_ITERATIONS=10
 TOOL_ARGS=()  # Additional args to pass to the tool
+CUSTOM_PROMPT=""  # Optional custom prompt file
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -69,6 +78,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --tool=*)
       TOOL="${1#*=}"
+      shift
+      ;;
+    --custom-prompt)
+      CUSTOM_PROMPT="$2"
+      shift 2
+      ;;
+    --custom-prompt=*)
+      CUSTOM_PROMPT="${1#*=}"
       shift
       ;;
     --)
@@ -105,6 +122,12 @@ if ! type "$TOOL" &> /dev/null; then
     echo "Please install or configure '$TOOL' before running Ralph."
     exit 1
   fi
+fi
+
+# Validate custom prompt file if provided
+if [[ -n "$CUSTOM_PROMPT" ]] && [[ ! -f "$CUSTOM_PROMPT" ]]; then
+  echo "Error: Custom prompt file not found: $CUSTOM_PROMPT"
+  exit 1
 fi
 # All paths relative to current working directory (project root)
 PRD_FILE="./prd.json"
@@ -342,8 +365,12 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   echo "  Ralph Iteration $i of $MAX_ITERATIONS ($TOOL)"
   echo "==============================================================="
 
-  # Generate the prompt for the current tool
-  PROMPT=$(generate_prompt "$TOOL")
+  # Generate the prompt - use custom prompt file if provided, otherwise generate
+  if [[ -n "$CUSTOM_PROMPT" ]]; then
+    PROMPT=$(cat "$CUSTOM_PROMPT")
+  else
+    PROMPT=$(generate_prompt "$TOOL")
+  fi
 
   # Run the selected tool with the ralph prompt
   if [[ "$TOOL" == "amp" ]]; then

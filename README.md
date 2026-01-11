@@ -23,18 +23,12 @@ Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
 
 ### Option 1: Copy to your project
 
-Copy the ralph files into your project:
+Copy the ralph script into your project:
 
 ```bash
 # From your project root
 mkdir -p scripts/ralph
 cp /path/to/ralph/ralph.sh scripts/ralph/
-
-# Copy the prompt template for your AI tool of choice:
-cp /path/to/ralph/prompt.md scripts/ralph/prompt.md    # For Amp
-# OR
-cp /path/to/ralph/CLAUDE.md scripts/ralph/CLAUDE.md    # For Claude Code
-
 chmod +x scripts/ralph/ralph.sh
 ```
 
@@ -96,9 +90,15 @@ This creates `prd.json` with user stories structured for autonomous execution.
 
 # Using Claude Code
 ./scripts/ralph/ralph.sh --tool claude [max_iterations]
+
+# Using OpenCode
+./scripts/ralph/ralph.sh --tool opencode [max_iterations]
+
+# With a custom prompt
+./scripts/ralph/ralph.sh --custom-prompt ./my-prompt.md
 ```
 
-Default is 10 iterations. Use `--tool amp` or `--tool claude` to select your AI coding tool.
+Default is 10 iterations. Use `--tool amp`, `--tool claude`, or `--tool opencode` to select your AI coding tool. Run `./ralph.sh --help` for all options.
 
 Ralph will:
 1. Create a feature branch (from PRD `branchName`)
@@ -114,9 +114,8 @@ Ralph will:
 
 | File | Purpose |
 |------|---------|
-| `ralph.sh` | The bash loop that spawns fresh AI instances (supports `--tool amp` or `--tool claude`) |
-| `prompt.md` | Prompt template for Amp |
-| `CLAUDE.md` | Prompt template for Claude Code |
+| `ralph.sh` | The bash loop that spawns fresh AI instances (supports `--tool amp`, `--tool claude`, or `--tool opencode`) |
+| `prompt-template.md` | Template for creating custom prompts (copy and modify for your project) |
 | `prd.json` | User stories with `passes` status (the task list) |
 | `prd.json.example` | Example PRD format for reference |
 | `progress.txt` | Append-only learnings for future iterations |
@@ -203,10 +202,18 @@ git log --oneline -10
 
 ## Customizing the Prompt
 
-After copying `prompt.md` (for Amp) or `CLAUDE.md` (for Claude Code) to your project, customize it for your project:
-- Add project-specific quality check commands
-- Include codebase conventions
-- Add common gotchas for your stack
+Ralph uses an embedded default prompt, but you can provide your own:
+
+1. Copy `prompt-template.md` from the Ralph repo to your project
+2. Customize it for your project:
+   - Add project-specific quality check commands
+   - Include codebase conventions
+   - Add common gotchas for your stack
+3. Run Ralph with the `--custom-prompt` flag:
+
+```bash
+./ralph.sh --custom-prompt ./my-prompt.md
+```
 
 ## Archiving
 
