@@ -13,7 +13,10 @@ Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
 - One of the following AI coding tools installed and authenticated:
   - [Amp CLI](https://ampcode.com) (default)
   - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`npm install -g @anthropic-ai/claude-code`)
-- `jq` installed (`brew install jq` on macOS)
+  - [OpenCode](https://github.com/AmruthPillai/OpenCode) (`npm install -g @amruthpillai/opencode`)
+- Common utilities:
+  - `jq` for JSON manipulation (`brew install jq` on macOS, `apt-get install jq` on Ubuntu)
+  - `sponge` from moreutils for in-place file updates (`brew install moreutils` on macOS, `apt-get install moreutils` on Ubuntu)
 - A git repository for your project
 
 ## Setup
