@@ -603,7 +603,7 @@ generate_prompt() {
   local story_criteria="$5"
   local primary_plan_path="$6"
   local story_plan_path="$7"
-  local codebase_patterns="$8"
+  local learnings_file_exists="$8"
   local branch_name="$9"
   local update_story_cmd="${10}"
   local ralph_dir="${11}"
@@ -633,13 +633,9 @@ PROMPT_HEADER
     echo "- Story details: \`$story_plan_path\`"
   fi
 
-  # Learnings section (only if learnings file exists and non-empty)
-  if [[ -n "$codebase_patterns" ]]; then
-    cat << LEARNINGS_SECTION
-
-### Learnings from Previous Iterations
-$codebase_patterns
-LEARNINGS_SECTION
+  # Learnings file reference (only if file exists and has >2 lines)
+  if [[ "$learnings_file_exists" == "true" ]]; then
+    echo "- Memory from previous iterations: \`$learnings_file\`"
   fi
 
   cat << 'PROMPT_INSTRUCTIONS'
@@ -648,7 +644,7 @@ LEARNINGS_SECTION
 
 ## Instructions
 
-1. **Read context**: Load the plan files listed above if you need more details
+1. **Read context**: Load the Context Files listed above
 
 2. **Implement** the story, meeting all acceptance criteria
 
@@ -806,12 +802,11 @@ Available variables (substituted at runtime):
   $STORY_CRITERIA     - Acceptance criteria as bullet list (not directly available)
   $PRIMARY_PLAN_PATH  - Path to README.md
   $STORY_PLAN_PATH    - Path to story-specific plan (if exists)
-  $CODEBASE_PATTERNS  - Contents of LEARNINGS_FILE (not directly available)
   $UPDATE_STORY_CMD   - Command to mark story complete (not directly available)
 
-Note: Some variables like $STORY_DESCRIPTION, $STORY_CRITERIA, $CODEBASE_PATTERNS,
-and $UPDATE_STORY_CMD are only available in the embedded prompt, not in custom
-templates. Custom templates receive the simpler variables via sed substitution.
+Note: Some variables like $STORY_DESCRIPTION, $STORY_CRITERIA, and $UPDATE_STORY_CMD
+are only available in the embedded prompt, not in custom templates. Custom templates 
+receive the simpler variables via sed substitution.
 
 To use this template:
   1. Copy to your ralph project: cp .agents/ralph.md ralph/myproject/.agents/
@@ -923,10 +918,11 @@ precompute_variables() {
 
   # Learnings file
   LEARNINGS_FILE="$RALPH_DIR/AGENTS.md"
-  if [[ -f "$LEARNINGS_FILE" ]]; then
-    CODEBASE_PATTERNS=$(cat "$LEARNINGS_FILE")
+  # Check if learnings file exists and has meaningful content (>2 lines)
+  if [[ -f "$LEARNINGS_FILE" ]] && [[ $(wc -l < "$LEARNINGS_FILE") -gt 2 ]]; then
+    LEARNINGS_FILE_EXISTS="true"
   else
-    CODEBASE_PATTERNS=""
+    LEARNINGS_FILE_EXISTS="false"
   fi
 
   # Pre-built update command
@@ -1111,7 +1107,7 @@ if [[ "$NEXT_PROMPT_FLAG" = true ]]; then
       "$STORY_CRITERIA" \
       "$PRIMARY_PLAN_PATH" \
       "$STORY_PLAN_PATH" \
-      "$CODEBASE_PATTERNS" \
+      "$LEARNINGS_FILE_EXISTS" \
       "$BRANCH_NAME" \
       "$UPDATE_STORY_CMD" \
       "$RALPH_DIR" \
@@ -1296,20 +1292,22 @@ if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
   PROMPT=$(generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS")
 
   # Debug: Write prompt to file for inspection
-  DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
-  {
-    echo "# Debug: Learn-Only Prompt"
-    echo ""
-    echo "## Environment Info"
-    echo "- Current directory: $(pwd)"
-    echo "- RALPH_DIR: $RALPH_DIR"
-    echo "- LEARNINGS_FILE: $LEARNINGS_FILE"
-    echo ""
-    echo "---"
-    echo ""
-    echo "$PROMPT"
-  } > "$DEBUG_PROMPT_FILE"
-  echo -e "${DIM}Debug: Prompt written to $DEBUG_PROMPT_FILE${NC}"
+  if [[ -n "$DEBUG" ]]; then
+    DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
+    {
+      echo "# Debug: Learn-Only Prompt"
+      echo ""
+      echo "## Environment Info"
+      echo "- Current directory: $(pwd)"
+      echo "- RALPH_DIR: $RALPH_DIR"
+      echo "- LEARNINGS_FILE: $LEARNINGS_FILE"
+      echo ""
+      echo "---"
+      echo ""
+      echo "$PROMPT"
+    } > "$DEBUG_PROMPT_FILE"
+    echo -e "${DIM}Debug: Prompt written to $DEBUG_PROMPT_FILE${NC}"
+  fi
 
   echo -e "${CYAN}${E_BOOK} Running learn-only prompt...${NC}"
   
@@ -1451,20 +1449,22 @@ for i in $(seq 1 $MAX_ITERATIONS); do
         PROMPT=$(generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS")
 
         # Debug: Write prompt to file for inspection
-        DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
-        {
-          echo "# Debug: Learn Iteration Prompt"
-          echo ""
-          echo "## Environment Info"
-          echo "- Current directory: $(pwd)"
-          echo "- RALPH_DIR: $RALPH_DIR"
-          echo "- LEARNINGS_FILE: $LEARNINGS_FILE"
-          echo ""
-          echo "---"
-          echo ""
-          echo "$PROMPT"
-        } > "$DEBUG_PROMPT_FILE"
-        echo -e "${DIM}Debug: Prompt written to $DEBUG_PROMPT_FILE${NC}"
+        if [[ -n "$DEBUG" ]]; then
+          DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
+          {
+            echo "# Debug: Learn Iteration Prompt"
+            echo ""
+            echo "## Environment Info"
+            echo "- Current directory: $(pwd)"
+            echo "- RALPH_DIR: $RALPH_DIR"
+            echo "- LEARNINGS_FILE: $LEARNINGS_FILE"
+            echo ""
+            echo "---"
+            echo ""
+            echo "$PROMPT"
+          } > "$DEBUG_PROMPT_FILE"
+          echo -e "${DIM}Debug: Prompt written to $DEBUG_PROMPT_FILE${NC}"
+        fi
 
         # Record start time
         LEARN_START=$(date +%s)
@@ -1562,7 +1562,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
       "$STORY_CRITERIA" \
       "$PRIMARY_PLAN_PATH" \
       "$STORY_PLAN_PATH" \
-      "$CODEBASE_PATTERNS" \
+      "$LEARNINGS_FILE_EXISTS" \
       "$BRANCH_NAME" \
       "$UPDATE_STORY_CMD" \
       "$RALPH_DIR" \
@@ -1573,24 +1573,26 @@ for i in $(seq 1 $MAX_ITERATIONS); do
       "$LEARN_FLAG")
   fi
 
-  # Debug: Write prompt to file for inspection
-  DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
-  {
-    echo "# Debug: Generated Prompt for Iteration $i"
-    echo ""
-    echo "## Environment Info"
-    echo "- Current directory: $(pwd)"
-    echo "- RALPH_DIR: $RALPH_DIR"
-    echo "- RALPH_JSON: $RALPH_JSON"
-    echo "- WORKTREE_FLAG: $WORKTREE_FLAG"
-    echo "- WORKTREE_DIR: ${WORKTREE_DIR:-N/A}"
-    echo "- WORKTREE_DIR_RELATIVE: ${WORKTREE_DIR_RELATIVE:-N/A}"
-    echo ""
-    echo "---"
-    echo ""
-    echo "$PROMPT"
-  } > "$DEBUG_PROMPT_FILE"
-  echo -e "${DIM}Debug: Prompt written to $DEBUG_PROMPT_FILE${NC}"
+  if [[ -n "$DEBUG" ]]; then
+    # Debug: Write prompt to file for inspection
+    DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
+    {
+      echo "# Debug: Generated Prompt for Iteration $i"
+      echo ""
+      echo "## Environment Info"
+      echo "- Current directory: $(pwd)"
+      echo "- RALPH_DIR: $RALPH_DIR"
+      echo "- RALPH_JSON: $RALPH_JSON"
+      echo "- WORKTREE_FLAG: $WORKTREE_FLAG"
+      echo "- WORKTREE_DIR: ${WORKTREE_DIR:-N/A}"
+      echo "- WORKTREE_DIR_RELATIVE: ${WORKTREE_DIR_RELATIVE:-N/A}"
+      echo ""
+      echo "---"
+      echo ""
+      echo "$PROMPT"
+    } > "$DEBUG_PROMPT_FILE"
+    echo -e "${DIM}Debug: Prompt written to $DEBUG_PROMPT_FILE${NC}"
+  fi
 
   # Record start time for failure detection
   ITERATION_START=$(date +%s)
