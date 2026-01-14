@@ -57,16 +57,45 @@ setup_colors() {
 # Initialize colors (may be called again after parsing --no-color flag)
 setup_colors
 
+# Global variables for cleanup
+TOOL_PID=""
+OPENCODE_SERVER_PID=""
+OPENCODE_PORT=""
+
 # Cleanup function to reset terminal on exit
 cleanup_terminal() {
-  # Reset scrolling region if stderr is a TTY
+  # Reset terminal state if stderr is a TTY
   if [[ -t 2 ]]; then
-    printf "\033[r" >&2
+    # Clear line 1 (status bar), reset scrolling region, and move to bottom
+    printf "\033[1;1H\033[K\033[r\033[999B\n" >&2
   fi
+}
+
+# Cleanup function for interrupts (INT signal)
+cleanup_interrupt() {
+  echo ""
+  echo -e "${YELLOW}${E_STOP} Interrupt received, cleaning up...${NC}"
+  
+  # Kill current tool process if running
+  if [[ -n "$TOOL_PID" ]] && kill -0 "$TOOL_PID" 2>/dev/null; then
+    kill "$TOOL_PID" 2>/dev/null || true
+    wait "$TOOL_PID" 2>/dev/null || true
+  fi
+  
+  # Kill opencode server if running
+  if [[ -n "$OPENCODE_SERVER_PID" ]] && kill -0 "$OPENCODE_SERVER_PID" 2>/dev/null; then
+    echo -e "${DIM}Stopping OpenCode server (PID $OPENCODE_SERVER_PID)...${NC}"
+    kill "$OPENCODE_SERVER_PID" 2>/dev/null || true
+    wait "$OPENCODE_SERVER_PID" 2>/dev/null || true
+  fi
+  
+  cleanup_terminal
+  exit 130  # Standard exit code for SIGINT
 }
 
 # Set up trap to cleanup terminal on exit
 trap cleanup_terminal EXIT
+trap cleanup_interrupt INT
 
 # =============================================================================
 # Help function
@@ -903,10 +932,11 @@ format_time() {
 }
 
 # Monitor a process and display real-time stats
-# Args: PID, START_TIME
+# Args: PID, START_TIME, [OPENCODE_PORT]
 monitor_process() {
   local pid=$1
   local start_time=$2
+  local opencode_port=$3
   local last_line=""
   
   # Skip monitoring if stderr is not a TTY (e.g., piped to file)
@@ -931,19 +961,27 @@ monitor_process() {
     local mem_kb=$(ps -p "$pid" -o rss= 2>/dev/null | tr -d ' ' || echo "0")
     local mem_mb=$((mem_kb / 1024))
     
-    # Get LISTENING ports only (not client connections)
+    # Get LISTENING ports (use OpenCode port if provided, otherwise detect)
     local ports=""
-    if command -v ss &>/dev/null; then
+    local port_label="Ports"
+    if [[ -n "$opencode_port" ]]; then
+      # Use OpenCode server URL for clickable link
+      ports="http://localhost:$opencode_port"
+      port_label="Web GUI"
+    elif command -v ss &>/dev/null; then
       # Use ss to get listening ports for this PID
       ports=$(ss -ltnp 2>/dev/null | grep "pid=$pid," | awk '{print $4}' | sed 's/.*://' | sort -u | tr '\n' ',' | sed 's/,$//')
+      [[ -z "$ports" ]] && ports="none"
     elif command -v netstat &>/dev/null; then
       # Fallback to netstat
       ports=$(netstat -ltnp 2>/dev/null | grep "$pid/" | awk '{print $4}' | sed 's/.*://' | sort -u | tr '\n' ',' | sed 's/,$//')
+      [[ -z "$ports" ]] && ports="none"
+    else
+      ports="none"
     fi
-    [[ -z "$ports" ]] && ports="none"
-    
+
     # Build status line with elapsed time (no colors for cleaner display)
-    local status_line="[Monitor] PID: ${pid} | Elapsed: ${elapsed_str} | CPU: ${cpu}% | MEM: ${mem_mb}MB | Ports: ${ports}"
+    local status_line="[Monitor] Agent PID: ${pid} | Elapsed: ${elapsed_str} | CPU: ${cpu}% | MEM: ${mem_mb}MB | ${port_label}: ${ports}"
     
     # Only update if changed (reduce flicker)
     if [[ "$status_line" != "$last_line" ]]; then
@@ -1166,12 +1204,54 @@ fi
 # Initialize learnings file path (will be created on first task)
 LEARNINGS_FILE="$RALPH_DIR/AGENTS.md"
 
+# Function to start OpenCode server (called when needed)
+start_opencode_server() {
+  if [[ "$TOOL" != "opencode" ]] || [[ -n "$OPENCODE_SERVER_PID" ]]; then
+    return 0
+  fi
+  
+  # Generate random high port (49152-65535 is the dynamic/private port range)
+  OPENCODE_PORT=$((49152 + RANDOM % 16384))
+  OPENCODE_URL="http://127.0.0.1:$OPENCODE_PORT"
+  
+  echo -e "   ${DIM}Starting OpenCode server on port $OPENCODE_PORT...${NC}"
+  
+  # Start the server in background
+  "$TOOL_CMD" serve --port "$OPENCODE_PORT" > /dev/null 2>&1 &
+  OPENCODE_SERVER_PID=$!
+  
+  # Wait for server to be ready (max 5 seconds)
+  local wait_start=$(date +%s)
+  local server_ready=false
+  while [[ $(($(date +%s) - wait_start)) -lt 5 ]]; do
+    if curl -s --max-time 1 "$OPENCODE_URL/health" > /dev/null 2>&1 || \
+       wget -q --timeout=1 -O /dev/null "$OPENCODE_URL/health" 2>/dev/null; then
+      server_ready=true
+      break
+    fi
+    sleep 0.2
+  done
+  
+  if [[ "$server_ready" != "true" ]]; then
+    echo -e "${RED}${E_ERROR} Error: OpenCode server failed to start on port $OPENCODE_PORT${NC}"
+    # Kill the server process if it's still there
+    if kill -0 "$OPENCODE_SERVER_PID" 2>/dev/null; then
+      kill "$OPENCODE_SERVER_PID" 2>/dev/null || true
+    fi
+    OPENCODE_SERVER_PID=""
+    exit 1
+  fi
+}
+
 # Handle --learn-now flag (just run learn prompt, no tasks)
 if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
   if [[ ! -f "$LEARNINGS_FILE" ]] || [[ ! -s "$LEARNINGS_FILE" ]]; then
     echo -e "${RED}${E_ERROR} Error: No learnings file found at $LEARNINGS_FILE${NC}"
     exit 1
   fi
+  
+  # Start OpenCode server if needed
+  start_opencode_server
   
   # Initialize wall time tracking
   RALPH_START_TIME=$(date +%s)
@@ -1195,10 +1275,11 @@ if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
     echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
     TOOL_PID=$!
   else
+    # OpenCode: use run command with --attach to connect to server
     if ((${#TOOL_ARGS[@]})); then
-      "$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
+      "$TOOL_CMD" run --attach "$OPENCODE_URL" "$PROMPT" "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
     else
-      "$TOOL_CMD" run "$PROMPT" > "$TEMP_OUTPUT" 2>&1 &
+      "$TOOL_CMD" run --attach "$OPENCODE_URL" "$PROMPT" > "$TEMP_OUTPUT" 2>&1 &
     fi
     TOOL_PID=$!
   fi
@@ -1206,9 +1287,9 @@ if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
   # Stream output file to terminal using tail -f
   tail -f "$TEMP_OUTPUT" 2>/dev/null &
   TAIL_PID=$!
-  
+
   # Start monitoring in background
-  monitor_process "$TOOL_PID" "$LEARN_START" &
+  monitor_process "$TOOL_PID" "$LEARN_START" "$OPENCODE_PORT" &
   MONITOR_PID=$!
   
   # Wait for tool to complete
@@ -1246,11 +1327,23 @@ fi
 echo ""
 echo -e "${CYAN}${E_ROCKET} Starting Ralph${NC}"
 echo -e "   ${DIM}Project:${NC}        ${ORIG_RALPH_DIR:-$RALPH_DIR}"
-if ((${#TOOL_ARGS[@]})); then
+
+# Start OpenCode server if using opencode
+start_opencode_server
+
+# Display tool info
+if [[ "$TOOL" == "opencode" ]] && [[ -n "$OPENCODE_PORT" ]]; then
+  if ((${#TOOL_ARGS[@]})); then
+    echo -e "   ${DIM}Tool:${NC}           $TOOL (server port $OPENCODE_PORT) ${TOOL_ARGS[*]}"
+  else
+    echo -e "   ${DIM}Tool:${NC}           $TOOL (server port $OPENCODE_PORT)"
+  fi
+elif ((${#TOOL_ARGS[@]})); then
   echo -e "   ${DIM}Tool:${NC}           $TOOL ${TOOL_ARGS[*]}"
 else
   echo -e "   ${DIM}Tool:${NC}           $TOOL"
 fi
+
 echo -e "   ${DIM}Max iterations:${NC} $MAX_ITERATIONS"
 if [[ -n "$ORIG_RALPH_DIR" ]]; then
   echo -e "   ${DIM}Working dir:${NC}    $(pwd)"
@@ -1300,10 +1393,11 @@ for i in $(seq 1 $MAX_ITERATIONS); do
           echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
           TOOL_PID=$!
         else
+          # OpenCode: use run command with --attach to connect to server
           if ((${#TOOL_ARGS[@]})); then
-            "$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
+            "$TOOL_CMD" run --attach "$OPENCODE_URL" "$PROMPT" "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
           else
-            "$TOOL_CMD" run "$PROMPT" > "$TEMP_OUTPUT" 2>&1 &
+            "$TOOL_CMD" run --attach "$OPENCODE_URL" "$PROMPT" > "$TEMP_OUTPUT" 2>&1 &
           fi
           TOOL_PID=$!
         fi
@@ -1311,9 +1405,9 @@ for i in $(seq 1 $MAX_ITERATIONS); do
         # Stream output file to terminal using tail -f
         tail -f "$TEMP_OUTPUT" 2>/dev/null &
         TAIL_PID=$!
-        
+
         # Start monitoring in background
-        monitor_process "$TOOL_PID" "$LEARN_START" &
+        monitor_process "$TOOL_PID" "$LEARN_START" "$OPENCODE_PORT" &
         MONITOR_PID=$!
         
         # Wait for tool to complete
@@ -1405,11 +1499,11 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
     TOOL_PID=$!
   else
-    # OpenCode: use run command for non-interactive mode
+    # OpenCode: use run command with --attach to connect to server
     if ((${#TOOL_ARGS[@]})); then
-      "$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
+      "$TOOL_CMD" run --attach "$OPENCODE_URL" "$PROMPT" "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
     else
-      "$TOOL_CMD" run "$PROMPT" > "$TEMP_OUTPUT" 2>&1 &
+      "$TOOL_CMD" run --attach "$OPENCODE_URL" "$PROMPT" > "$TEMP_OUTPUT" 2>&1 &
     fi
     TOOL_PID=$!
   fi
@@ -1419,7 +1513,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   TAIL_PID=$!
 
   # Start monitoring in background
-  monitor_process "$TOOL_PID" "$ITERATION_START" &
+  monitor_process "$TOOL_PID" "$ITERATION_START" "$OPENCODE_PORT" &
   MONITOR_PID=$!
 
   # Wait for tool to complete
