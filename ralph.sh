@@ -88,7 +88,12 @@ cleanup_interrupt() {
     kill "$OPENCODE_SERVER_PID" 2>/dev/null || true
     wait "$OPENCODE_SERVER_PID" 2>/dev/null || true
   fi
-  
+
+  # Show worktree message if in worktree mode
+  if [[ "$WORKTREE_FLAG" == true ]] && [[ -n "$WORKTREE_DIR_RELATIVE" ]]; then
+    echo -e "${CYAN}Worktree left intact: ${WORKTREE_DIR_RELATIVE}${NC}"
+  fi
+
   cleanup_terminal
   exit 130  # Standard exit code for SIGINT
 }
@@ -520,43 +525,42 @@ setup_worktree() {
       echo "  git worktree remove $WORKTREE_DIR"
       exit 1
     fi
-    echo -e "${DIM}Reusing existing worktree...${NC}"
+    echo -e "${DIM}Reusing existing worktree (preserving progress)...${NC}"
   else
     # Create worktree base directory
     mkdir -p "$WORKTREE_BASE"
-    
+
     # Try to add worktree on existing branch, or create new branch
     echo -e "${DIM}Creating worktree at $WORKTREE_DIR on branch $branch_name...${NC}"
     if ! git worktree add "$WORKTREE_DIR" "$branch_name" 2>/dev/null; then
       # Branch doesn't exist, create it from current HEAD
       git worktree add -b "$branch_name" "$WORKTREE_DIR"
     fi
+
+    # Copy ralph project files to worktree (only for NEW worktrees)
+    echo -e "${DIM}Copying ralph files to worktree...${NC}"
+
+    # Verify source ralph.json exists before copying
+    if [[ ! -f "$abs_ralph_json" ]]; then
+      echo -e "${RED}${E_ERROR} Error: Source ralph.json not found at $abs_ralph_json${NC}"
+      exit 1
+    fi
+
+    # Create worktree directory structure using relative path
+    mkdir -p "$WORKTREE_DIR/$rel_ralph_dir"
+
+    # Copy from absolute source path to worktree
+    cp -r "$abs_ralph_dir"/* "$WORKTREE_DIR/$rel_ralph_dir/" 2>/dev/null || cp -r "$abs_ralph_dir"/. "$WORKTREE_DIR/$rel_ralph_dir/"
   fi
-  
-  # Copy ralph project files to worktree (mkdir -p for safety)
-  echo -e "${DIM}Copying ralph files to worktree...${NC}"
-
-  # Verify source ralph.json exists before copying
-  if [[ ! -f "$abs_ralph_json" ]]; then
-    echo -e "${RED}${E_ERROR} Error: Source ralph.json not found at $abs_ralph_json${NC}"
-    exit 1
-  fi
-
-  # Create worktree directory structure using relative path
-  mkdir -p "$WORKTREE_DIR/$rel_ralph_dir"
-
-  # Copy from absolute source path to worktree
-  cp -r "$abs_ralph_dir"/* "$WORKTREE_DIR/$rel_ralph_dir/" 2>/dev/null || cp -r "$abs_ralph_dir"/. "$WORKTREE_DIR/$rel_ralph_dir/"
 
   # Update all paths to point to worktree (using relative paths within worktree)
   RALPH_JSON="$WORKTREE_DIR/$rel_ralph_dir/ralph.json"
   RALPH_DIR="$WORKTREE_DIR/$rel_ralph_dir"
 
-  # Verify ralph.json was copied successfully
+  # Verify ralph.json exists in worktree
   if [[ ! -f "$RALPH_JSON" ]]; then
-    echo -e "${RED}${E_ERROR} Error: Failed to copy ralph.json to worktree${NC}"
+    echo -e "${RED}${E_ERROR} Error: ralph.json not found in worktree${NC}"
     echo -e "${DIM}Expected at: $RALPH_JSON${NC}"
-    echo -e "${DIM}Source was: $abs_ralph_json${NC}"
     exit 1
   fi
   PROGRESS_FILE="$RALPH_DIR/progress.txt"
@@ -566,6 +570,12 @@ setup_worktree() {
   ARCHIVE_DIR="$WORKTREE_DIR/ralph/archive"
 
   echo -e "${GREEN}${E_CHECK} Worktree ready:${NC} $WORKTREE_DIR"
+
+  # Save relative path for display purposes
+  WORKTREE_DIR_RELATIVE="$WORKTREE_DIR"
+
+  # Convert to absolute path before changing directory
+  WORKTREE_DIR=$(cd "$WORKTREE_DIR" && pwd)
 
   # Change to worktree directory so tools operate there
   cd "$WORKTREE_DIR" || {
@@ -638,37 +648,26 @@ LEARNINGS_SECTION
 
 ## Instructions
 
-1. **Checkout branch**: 
-PROMPT_INSTRUCTIONS
+1. **Read context**: Load the plan files listed above if you need more details
 
-  echo "   \`\`\`bash"
-  echo "   git checkout \"$branch_name\" 2>/dev/null || git checkout -b \"$branch_name\""
-  echo "   \`\`\`"
+2. **Implement** the story, meeting all acceptance criteria
 
-  cat << 'PROMPT_INSTRUCTIONS2'
+3. **Run quality checks** (typecheck, lint, test - whatever the project requires)
 
-2. **Read context**: Load the plan files listed above if you need more details
-
-3. **Implement** the story, meeting all acceptance criteria
-
-4. **Run quality checks** (typecheck, lint, test - whatever the project requires)
-
-PROMPT_INSTRUCTIONS2
-
-  cat << 'PROMPT_INSTRUCTIONS3'
-5. **Complete the story** - Do ALL of the following before committing:
+4. **Complete the story** - Do ALL of the following before committing:
    a. Update ralph.json to mark story complete
    b. Append progress entry to progress.txt
    c. Stage ALL changes (implementation + bookkeeping files)
    d. Commit with message starting:
-PROMPT_INSTRUCTIONS3
+PROMPT_INSTRUCTIONS
+
   echo "      \`feat: $story_id - $story_title\`"
-  cat << 'PROMPT_INSTRUCTIONS4'
+  cat << 'PROMPT_INSTRUCTIONS2'
    
    This atomic commit ensures bookkeeping is never forgotten.
    
    Commands:
-PROMPT_INSTRUCTIONS4
+PROMPT_INSTRUCTIONS2
 
   echo "   \`\`\`bash"
   echo "   # a. Mark story complete"
@@ -697,7 +696,7 @@ PROGRESS_FORMAT2
   echo "   \`\`\`"
 
   echo ""
-  echo "6. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to \`$learnings_file\`"
+  echo "5. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to \`$learnings_file\`"
 
   # Thread URL note (only for Amp)
   if [[ "$tool" == "amp" ]]; then
@@ -838,18 +837,13 @@ jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSO
 
 ## Instructions
 
-1. **Checkout branch**: 
-   ```bash
-   git checkout "$BRANCH_NAME" 2>/dev/null || git checkout -b "$BRANCH_NAME"
-   ```
+1. **Read context**: Load the plan files and story details from ralph.json
 
-2. **Read context**: Load the plan files and story details from ralph.json
+2. **Implement** the story, meeting all acceptance criteria
 
-3. **Implement** the story, meeting all acceptance criteria
+3. **Run quality checks** (typecheck, lint, test - whatever the project requires)
 
-4. **Run quality checks** (typecheck, lint, test - whatever the project requires)
-
-5. **Complete the story** - Do ALL of the following before committing:
+4. **Complete the story** - Do ALL of the following before committing:
    a. Update ralph.json to mark story complete
    b. Append progress entry to progress.txt
    c. Stage ALL changes (implementation + bookkeeping files)
@@ -874,7 +868,7 @@ jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSO
    git commit -m "feat: $STORY_ID - $STORY_TITLE"
    ```
 
-6. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to `$LEARNINGS_FILE`
+5. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to `$LEARNINGS_FILE`
 
 ## Stop Condition
 
@@ -1158,7 +1152,7 @@ if [[ "$STATUS_FLAG" = true ]]; then
   # Print header
   echo ""
   echo -e "${CYAN}${E_CHART} Ralph Status: ${BOLD}$RALPH_DIR${NC}"
-  echo -e "${DIM}═══════════════════════════════════════════════════════════════${NC}"
+  echo -e "${DIM}═════════════════════════════════════════════════════════════════════════════${NC}"
   echo ""
   echo -e "  ${DIM}Project:${NC}     $PROJECT"
   echo -e "  ${DIM}Description:${NC} $DESCRIPTION"
@@ -1168,9 +1162,9 @@ if [[ "$STATUS_FLAG" = true ]]; then
     echo -e "  ${DIM}Started:${NC}     $STARTED"
   fi
   echo ""
-  echo -e "${DIM}───────────────────────────────────────────────────────────────${NC}"
+  echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────${NC}"
   echo -e "  ${BOLD}User Stories${NC}"
-  echo -e "${DIM}───────────────────────────────────────────────────────────────${NC}"
+  echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────${NC}"
   echo ""
   
   # Print each story
@@ -1183,7 +1177,7 @@ if [[ "$STATUS_FLAG" = true ]]; then
   done
   
   echo ""
-  echo -e "${DIM}───────────────────────────────────────────────────────────────${NC}"
+  echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────${NC}"
   
   # Print progress summary with color based on completion
   if [[ "$PERCENT" -eq 100 ]]; then
@@ -1194,7 +1188,7 @@ if [[ "$STATUS_FLAG" = true ]]; then
     echo -e "  Progress: $COMPLETE_STORIES/$TOTAL_STORIES stories complete (${PERCENT}%)"
   fi
   
-  echo -e "${DIM}═══════════════════════════════════════════════════════════════${NC}"
+  echo -e "${DIM}═════════════════════════════════════════════════════════════════════════════${NC}"
   echo ""
   
   exit 0
@@ -1300,7 +1294,23 @@ if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
   
   CODEBASE_PATTERNS=$(cat "$LEARNINGS_FILE")
   PROMPT=$(generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS")
-  
+
+  # Debug: Write prompt to file for inspection
+  DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
+  {
+    echo "# Debug: Learn-Only Prompt"
+    echo ""
+    echo "## Environment Info"
+    echo "- Current directory: $(pwd)"
+    echo "- RALPH_DIR: $RALPH_DIR"
+    echo "- LEARNINGS_FILE: $LEARNINGS_FILE"
+    echo ""
+    echo "---"
+    echo ""
+    echo "$PROMPT"
+  } > "$DEBUG_PROMPT_FILE"
+  echo -e "${DIM}Debug: Prompt written to $DEBUG_PROMPT_FILE${NC}"
+
   echo -e "${CYAN}${E_BOOK} Running learn-only prompt...${NC}"
   
   # Record start time
@@ -1343,14 +1353,12 @@ if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
   kill "$MONITOR_PID" 2>/dev/null || true
   wait "$MONITOR_PID" 2>/dev/null || true
   
-  # Read output from temp file
-  OUTPUT=$(cat "$TEMP_OUTPUT")
-  rm -f "$TEMP_OUTPUT"
-  
-  if echo "$OUTPUT" | grep -q "<promise>COMPLETE</promise>"; then
+  # Check for completion signal and cleanup temp file
+  if grep -q "<promise>COMPLETE</promise>" "$TEMP_OUTPUT"; then
     echo ""
     echo -e "${GREEN}${E_SPARKLE} Learnings absorbed successfully!${NC}"
   fi
+  rm -f "$TEMP_OUTPUT"
   show_final_wall_time
   exit 0
 fi
@@ -1400,7 +1408,28 @@ MIN_ITERATION_TIME=4  # seconds - iterations faster than this are considered fai
 RALPH_START_TIME=$(date +%s)
 TOTAL_ITERATION_TIME=0
 
+# Checkout the branch once before starting iterations
+BRANCH_NAME=$(jq -r '.branchName' "$RALPH_JSON")
+if [[ -n "$BRANCH_NAME" && "$BRANCH_NAME" != "null" ]]; then
+  echo ""
+  echo -e "${CYAN}${E_ROCKET} Checking out branch: $BRANCH_NAME${NC}"
+  if git checkout "$BRANCH_NAME" 2>/dev/null; then
+    echo -e "${DIM}   Already on branch $BRANCH_NAME${NC}"
+  else
+    git checkout -b "$BRANCH_NAME"
+    echo -e "${DIM}   Created new branch $BRANCH_NAME${NC}"
+  fi
+fi
+
 for i in $(seq 1 $MAX_ITERATIONS); do
+  # Ensure we're in the correct working directory (especially important for worktrees)
+  if [[ "$WORKTREE_FLAG" == true ]] && [[ -n "$WORKTREE_DIR" ]]; then
+    cd "$WORKTREE_DIR" || {
+      echo -e "${RED}${E_ERROR} Failed to cd back to worktree: $WORKTREE_DIR${NC}"
+      exit 1
+    }
+  fi
+
   # Check for stop signal
   if [ -f "$STOP_FILE" ]; then
     echo ""
@@ -1420,7 +1449,23 @@ for i in $(seq 1 $MAX_ITERATIONS); do
         echo -e "${CYAN}${E_BOOK} All stories complete. Running learn prompt...${NC}"
         CODEBASE_PATTERNS=$(cat "$LEARNINGS_FILE")
         PROMPT=$(generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS")
-        
+
+        # Debug: Write prompt to file for inspection
+        DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
+        {
+          echo "# Debug: Learn Iteration Prompt"
+          echo ""
+          echo "## Environment Info"
+          echo "- Current directory: $(pwd)"
+          echo "- RALPH_DIR: $RALPH_DIR"
+          echo "- LEARNINGS_FILE: $LEARNINGS_FILE"
+          echo ""
+          echo "---"
+          echo ""
+          echo "$PROMPT"
+        } > "$DEBUG_PROMPT_FILE"
+        echo -e "${DIM}Debug: Prompt written to $DEBUG_PROMPT_FILE${NC}"
+
         # Record start time
         LEARN_START=$(date +%s)
         
@@ -1460,11 +1505,10 @@ for i in $(seq 1 $MAX_ITERATIONS); do
         wait "$TAIL_PID" 2>/dev/null || true
         kill "$MONITOR_PID" 2>/dev/null || true
         wait "$MONITOR_PID" 2>/dev/null || true
-        
-        # Read output from temp file
-        OUTPUT=$(cat "$TEMP_OUTPUT")
+
+        # Cleanup temp file
         rm -f "$TEMP_OUTPUT"
-        
+
         echo ""
         echo -e "${GREEN}${E_SPARKLE} Learnings absorbed!${NC}"
       fi
@@ -1482,11 +1526,14 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   ensure_learnings_file
 
   echo ""
-  echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
+  echo -e "${BLUE}╔═════════════════════════════════════════════════════════════════════════════╗${NC}"
   echo -e "${BLUE}║${NC} ${E_LOOP} ${BOLD}Ralph Iteration $i of $MAX_ITERATIONS${NC} ${DIM}($TOOL)${NC}"
   echo -e "${BLUE}║${NC} ${E_FOLDER} ${DIM}Project:${NC} $RALPH_DIR"
+  if [[ "$WORKTREE_FLAG" == true ]]; then
+    echo -e "${BLUE}║${NC} ${E_FOLDER} ${DIM}Worktree:${NC} $WORKTREE_DIR_RELATIVE"
+  fi
   echo -e "${BLUE}║${NC} ${E_MEMO} ${DIM}Story:${NC}   $STORY_ID - $STORY_TITLE"
-  echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
+  echo -e "${BLUE}╚═════════════════════════════════════════════════════════════════════════════╝${NC}"
 
   # Generate the prompt - priority: --custom-prompt > .agents/ralph.md > embedded default
   if [[ -n "$CUSTOM_PROMPT" ]]; then
@@ -1525,6 +1572,25 @@ for i in $(seq 1 $MAX_ITERATIONS); do
       "$IS_LAST_STORY" \
       "$LEARN_FLAG")
   fi
+
+  # Debug: Write prompt to file for inspection
+  DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
+  {
+    echo "# Debug: Generated Prompt for Iteration $i"
+    echo ""
+    echo "## Environment Info"
+    echo "- Current directory: $(pwd)"
+    echo "- RALPH_DIR: $RALPH_DIR"
+    echo "- RALPH_JSON: $RALPH_JSON"
+    echo "- WORKTREE_FLAG: $WORKTREE_FLAG"
+    echo "- WORKTREE_DIR: ${WORKTREE_DIR:-N/A}"
+    echo "- WORKTREE_DIR_RELATIVE: ${WORKTREE_DIR_RELATIVE:-N/A}"
+    echo ""
+    echo "---"
+    echo ""
+    echo "$PROMPT"
+  } > "$DEBUG_PROMPT_FILE"
+  echo -e "${DIM}Debug: Prompt written to $DEBUG_PROMPT_FILE${NC}"
 
   # Record start time for failure detection
   ITERATION_START=$(date +%s)
@@ -1567,16 +1633,13 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   kill "$MONITOR_PID" 2>/dev/null || true
   wait "$MONITOR_PID" 2>/dev/null || true
 
-  # Read output from temp file
-  OUTPUT=$(cat "$TEMP_OUTPUT")
-  rm -f "$TEMP_OUTPUT"
-  
   # Calculate iteration duration
   ITERATION_END=$(date +%s)
   ITERATION_DURATION=$((ITERATION_END - ITERATION_START))
-  
+
   # Check for completion signal
-  if echo "$OUTPUT" | grep -q "<promise>COMPLETE</promise>"; then
+  if grep -q "<promise>COMPLETE</promise>" "$TEMP_OUTPUT"; then
+    rm -f "$TEMP_OUTPUT"
     echo ""
     echo -e "${GREEN}${E_FINISH} Ralph completed all tasks!${NC}"
     echo -e "${DIM}Completed at iteration $i of $MAX_ITERATIONS${NC}"
@@ -1587,7 +1650,10 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     echo -e "${DIM}To recover files: git checkout HEAD~1 -- $RALPH_DIR/${NC}"
     exit 0
   fi
-  
+
+  # Cleanup temp file
+  rm -f "$TEMP_OUTPUT"
+
   # Detect rapid failures (tool exiting too quickly)
   if [ "$ITERATION_DURATION" -lt "$MIN_ITERATION_TIME" ]; then
     CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
