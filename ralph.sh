@@ -428,7 +428,9 @@ fi
 
 # Extract directory from ralph.json path
 if [[ -n "$RALPH_JSON" ]]; then
-  RALPH_DIR=$(dirname "$RALPH_JSON")  # e.g., ralph/auth
+  # Convert to absolute path before any directory changes
+  RALPH_JSON=$(cd "$(dirname "$RALPH_JSON")" && pwd)/$(basename "$RALPH_JSON")
+  RALPH_DIR=$(dirname "$RALPH_JSON")  # e.g., /full/path/to/ralph/auth
   PROGRESS_FILE="$RALPH_DIR/progress.txt"
   ARCHIVE_DIR="ralph/archive"
   LAST_BRANCH_FILE="$RALPH_DIR/.last-branch"
@@ -487,16 +489,19 @@ ensure_gitignore_worktrees() {
 
 # Setup git worktree for isolated execution
 setup_worktree() {
-  local ralph_dir="$1"
-  local ralph_json="$2"
-  
+  local abs_ralph_dir="$1"  # Absolute path to ralph dir
+  local abs_ralph_json="$2"  # Absolute path to ralph.json
+
+  # Extract relative ralph path (e.g., /full/path/ralph/auth -> ralph/auth)
+  local rel_ralph_dir=$(echo "$abs_ralph_dir" | sed 's|.*/\(ralph/[^/]*\)$|\1|')
+
   # Extract feature name from ralph_dir (e.g., ralph/auth -> auth)
-  local feature_name=$(basename "$ralph_dir")
-  
+  local feature_name=$(basename "$abs_ralph_dir")
+
   # Read branch name from ralph.json
-  local branch_name=$(jq -r '.branchName' "$ralph_json")
+  local branch_name=$(jq -r '.branchName' "$abs_ralph_json")
   if [[ -z "$branch_name" || "$branch_name" == "null" ]]; then
-    echo -e "${RED}${E_ERROR} Error: No branchName in $ralph_json${NC}"
+    echo -e "${RED}${E_ERROR} Error: No branchName in $abs_ralph_json${NC}"
     exit 1
   fi
   
@@ -531,19 +536,43 @@ setup_worktree() {
   
   # Copy ralph project files to worktree (mkdir -p for safety)
   echo -e "${DIM}Copying ralph files to worktree...${NC}"
-  mkdir -p "$WORKTREE_DIR/$ralph_dir"
-  cp -r "$ralph_dir"/* "$WORKTREE_DIR/$ralph_dir/"
-  
-  # Update all paths to point to worktree
-  RALPH_JSON="$WORKTREE_DIR/$ralph_json"
-  RALPH_DIR="$WORKTREE_DIR/$ralph_dir"
+
+  # Verify source ralph.json exists before copying
+  if [[ ! -f "$abs_ralph_json" ]]; then
+    echo -e "${RED}${E_ERROR} Error: Source ralph.json not found at $abs_ralph_json${NC}"
+    exit 1
+  fi
+
+  # Create worktree directory structure using relative path
+  mkdir -p "$WORKTREE_DIR/$rel_ralph_dir"
+
+  # Copy from absolute source path to worktree
+  cp -r "$abs_ralph_dir"/* "$WORKTREE_DIR/$rel_ralph_dir/" 2>/dev/null || cp -r "$abs_ralph_dir"/. "$WORKTREE_DIR/$rel_ralph_dir/"
+
+  # Update all paths to point to worktree (using relative paths within worktree)
+  RALPH_JSON="$WORKTREE_DIR/$rel_ralph_dir/ralph.json"
+  RALPH_DIR="$WORKTREE_DIR/$rel_ralph_dir"
+
+  # Verify ralph.json was copied successfully
+  if [[ ! -f "$RALPH_JSON" ]]; then
+    echo -e "${RED}${E_ERROR} Error: Failed to copy ralph.json to worktree${NC}"
+    echo -e "${DIM}Expected at: $RALPH_JSON${NC}"
+    echo -e "${DIM}Source was: $abs_ralph_json${NC}"
+    exit 1
+  fi
   PROGRESS_FILE="$RALPH_DIR/progress.txt"
   LEARNINGS_FILE="$RALPH_DIR/AGENTS.md"
   LAST_BRANCH_FILE="$RALPH_DIR/.last-branch"
   STOP_FILE="$RALPH_DIR/.ralph-stop"
   ARCHIVE_DIR="$WORKTREE_DIR/ralph/archive"
-  
+
   echo -e "${GREEN}${E_CHECK} Worktree ready:${NC} $WORKTREE_DIR"
+
+  # Change to worktree directory so tools operate there
+  cd "$WORKTREE_DIR" || {
+    echo -e "${RED}${E_ERROR} Failed to cd to worktree: $WORKTREE_DIR${NC}"
+    exit 1
+  }
 }
 
 # Generate the prompt with pre-computed variables
