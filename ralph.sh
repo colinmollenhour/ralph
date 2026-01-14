@@ -129,11 +129,11 @@ OPTIONS:
   --                     Everything after -- is passed to the tool as additional arguments
 
 FLOW:
-  ┌─────────────────┐    ralph skill     ┌─────────────────────┐    ralph.sh     ┌─────────────┐
+  ┌─────────────────┐  ralph-prep skill  ┌─────────────────────┐    ralph.sh     ┌─────────────┐
   │ plans/foo.md    │ ────────────────►  │  ralph/foo/         │ ──────────────► │ Agent Loop  │
-  │ (source PRD)    │     converts       │  ralph.json         │    executes     │             │
-  └─────────────────┘                    │  README.md          │                 └─────────────┘
-                                         │  progress.txt       │
+  │ (source PRD)    │     converts       │   - ralph.json      │    executes     │             │
+  └─────────────────┘                    │   - README.md       │                 └─────────────┘
+                                         │   - progress.txt    │
                                          └─────────────────────┘
 
 FAILURE HANDLING:
@@ -144,41 +144,40 @@ EXAMPLES:
   ralph.sh                              # Interactive chooser
   ralph.sh ralph/auth                   # Run specific project (by directory)
   ralph.sh ralph/auth/ralph.json        # Run specific project (explicit path)
-  ralph.sh -n 5 ralph/auth              # Run with 5 max iterations
-  ralph.sh ralph/auth -n 5              # Flags can come after path
-  ralph.sh --next-prompt ralph/auth     # Debug: see prompt without running LLM
-  ralph.sh --status ralph/auth          # Show project status
-  ralph.sh --tool claude ralph/auth     # Run with Claude Code
-  ralph.sh --stop ralph/auth            # Stop a running Ralph project
+  ralph.sh ralph/auth -n 5              # Run with max of 5 iterations (default 50)
+  ralph.sh -n 5 ralph/auth              # Flags can come before or after path
+  ralph.sh ralph/auth --next-prompt     # Debug: see prompt without running LLM
+  ralph.sh ralph/auth --status          # Show project status
+  ralph.sh ralph/auth --tool claude     # Run with Claude Code
+  ralph.sh ralph/auth --stop            # Stop a running Ralph project
   ralph.sh ralph/auth --learn           # Normal execution + learn on final iteration
   ralph.sh ralph/auth --learn-now       # Just run learn prompt, no tasks
-  ralph.sh ralph/auth --worktree        # Run in isolated git worktree
-  ralph.sh --eject-prompt               # Create reusable prompt template
+  ralph.sh ralph/auth --worktree        # Run in isolated git worktree (run multiple Ralphs on different plans in parallel)
+  ralph.sh --eject-prompt               # Create reusable prompt template for customization
   ralph.sh --no-color ralph/auth        # Run without colors/emojis
 
 GETTING STARTED:
-  1. Create a PRD using the 'prd' skill:
-     > Use the prd skill to create a PRD for user authentication
-     This creates plans/auth.md
+  1. Create a PRD (optional - use 'ralph-prd' skill or write manually):
+     > Use the ralph-prd skill to create a PRD for user authentication as discussed
+     This creates plans/PRD-auth.md
 
-  2. Convert to Ralph format using the 'ralph' skill:
-     > Use the ralph skill to convert plans/auth.md
+  2. Convert to Ralph format using the 'ralph-prep' skill (REQUIRED):
+     > Use the ralph-prep skill to prepare plans/PRD-auth.md for Ralph
      This creates ralph/auth/ with ralph.json, README.md, progress.txt
 
   3. Run Ralph:
      $ ./ralph.sh ralph/auth
 
 CUSTOMIZING THE PROMPT:
-  Ralph uses prompts in this priority order:
+  Ralph kicks off each agent with a prompt. The prompt source is determined in this priority order:
   1. --custom-prompt <file> (explicit flag)
   2. [ralph-dir]/.agents/ralph.md (project-local template, if exists)
   3. Embedded default prompt
 
   To customize for your project:
-  1. Run: ./ralph.sh --eject-prompt
-  2. Copy .agents/ralph.md to your ralph project: cp .agents/ralph.md ralph/auth/.agents/
-  3. Edit ralph/auth/.agents/ralph.md
-  4. Ralph will automatically use it
+  1. Run: ./ralph.sh --eject-prompt to create .agents/ralph.md in your project
+  3. Edit .agents/ralph.md
+  4. Ralph will automatically use it - or copy it elsewhere and use --custom-prompt path/to/my/prompt.md
 
 EXIT CODES:
   0 - All stories completed successfully
@@ -1038,6 +1037,11 @@ monitor_process() {
 # Display final wall time summary
 # Args: none (uses global RALPH_START_TIME)
 show_final_wall_time() {
+  # Show git stats for the last commit
+  echo ""
+  git show --stat
+  echo ""
+
   local ralph_end_time=$(date +%s)
   local total_wall_time=$((ralph_end_time - RALPH_START_TIME))
   local wall_time_str=$(format_time $total_wall_time)

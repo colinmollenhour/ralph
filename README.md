@@ -10,17 +10,21 @@ Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
 
 ## Quick Start
 
-1. **Create a PRD** using the `prd` skill:
+1. **Create a PRD** (optional - use `ralph-prd` skill or write manually):
    ```
-   > Use the prd skill to create a PRD for user authentication
+   > Use the ralph-prd skill to create a PRD for user authentication
    ```
    This creates `plans/auth.md`
+   
+   Alternatively, you can write a PRD manually in `plans/` directory.
 
-2. **Convert to Ralph format** using the `ralph` skill:
+2. **Convert to Ralph format** using the `ralph-prep` skill (**REQUIRED**):
    ```
-   > Use the ralph skill to convert plans/auth.md
+   > Use the ralph-prep skill to convert plans/auth.md
    ```
    This creates `ralph/auth/ralph.json` and associated files
+   
+   **Note:** `ralph-prep` works with any PRD file (created by `ralph-prd` or written manually).
 
 3. **Run Ralph:**
    ```bash
@@ -37,11 +41,20 @@ Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
    jq '[.userStories[] | select(.passes == false)] | length' ralph/auth/ralph.json
    ```
 
+## When to Use ralph-prd
+
+The `ralph-prd` skill is **optional** but useful for:
+- **Complex features** requiring detailed acceptance criteria
+- **Large projects** where structured planning helps
+- **Teams** who want consistent PRD format across features
+
+For simple features, you can write PRDs manually in the `plans/` directory. The **only required skill** is `ralph-prep`, which converts any PRD (manual or generated) into Ralph's execution format.
+
 ## Directory Structure
 
 ```
 project-root/
-├── plans/                      # Your PRDs (created by prd skill)
+├── plans/                      # Your PRDs (created by ralph-prd skill or manually)
 │   ├── auth.md
 │   └── dashboard.md
 │
@@ -92,25 +105,25 @@ Copy the skills to your Amp or Claude config for use across all projects:
 **For Amp:**
 ```bash
 # From local clone
-cp -r skills/prd ~/.config/amp/skills/
-cp -r skills/ralph ~/.config/amp/skills/
+cp -r skills/ralph-prd ~/.config/amp/skills/
+cp -r skills/ralph-prep ~/.config/amp/skills/
 
 # Or via curl (no clone needed)
-mkdir -p ~/.config/amp/skills/{prd,ralph}
-curl -o ~/.config/amp/skills/prd/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/prd/SKILL.md
-curl -o ~/.config/amp/skills/ralph/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph/SKILL.md
+mkdir -p ~/.config/amp/skills/{ralph-prd,ralph-prep}
+curl -o ~/.config/amp/skills/ralph-prd/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph-prd/SKILL.md
+curl -o ~/.config/amp/skills/ralph-prep/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph-prep/SKILL.md
 ```
 
 **For Claude Code:**
 ```bash
 # From local clone
-cp -r skills/prd ~/.claude/skills/
-cp -r skills/ralph ~/.claude/skills/
+cp -r skills/ralph-prd ~/.claude/skills/
+cp -r skills/ralph-prep ~/.claude/skills/
 
 # Or via curl (no clone needed)
-mkdir -p ~/.claude/skills/{prd,ralph}
-curl -o ~/.claude/skills/prd/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/prd/SKILL.md
-curl -o ~/.claude/skills/ralph/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph/SKILL.md
+mkdir -p ~/.claude/skills/{ralph-prd,ralph-prep}
+curl -o ~/.claude/skills/ralph-prd/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph-prd/SKILL.md
+curl -o ~/.claude/skills/ralph-prep/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph-prep/SKILL.md
 ```
 
 ### Option 3: Copy to your project (Alternative)
@@ -138,22 +151,24 @@ This enables automatic handoff when context fills up, allowing Ralph to handle l
 
 ## Workflow
 
-### 1. Create a PRD
+### 1. Create a PRD (Optional)
 
-Use the PRD skill to generate a detailed requirements document:
+**Option A:** Use the ralph-prd skill to generate a detailed requirements document:
 
 ```
-Load the prd skill and create a PRD for [your feature description]
+Load the ralph-prd skill and create a PRD for [your feature description]
 ```
 
 Answer the clarifying questions. The skill saves output to `plans/[feature-name].md`.
 
-### 2. Convert PRD to Ralph format
+**Option B:** Write a PRD manually in `plans/[feature-name].md`
 
-Use the Ralph skill to convert the markdown PRD to a Ralph execution directory:
+### 2. Convert PRD to Ralph format (**REQUIRED**)
+
+Use the ralph-prep skill to convert the markdown PRD to a Ralph execution directory:
 
 ```
-Load the ralph skill and convert plans/[feature-name].md
+Load the ralph-prep skill and convert plans/[feature-name].md
 ```
 
 This creates `ralph/[feature-name]/` with:
@@ -205,8 +220,8 @@ Ralph will:
 | `ralph/[feature]/ralph.json` | User stories with `passes` status (the task list) |
 | `ralph/[feature]/progress.txt` | Simple iteration history |
 | `ralph/[feature]/AGENTS.md` | Learnings for future iterations (created on first task) |
-| `skills/prd/` | Skill for generating PRDs |
-| `skills/ralph/` | Skill for converting PRDs to execution directories |
+| `skills/ralph-prd/` | Optional skill for generating PRDs |
+| `skills/ralph-prep/` | **REQUIRED** skill for converting PRDs to execution directories |
 | `flowchart/` | Interactive visualization of how Ralph works |
 
 ## Flowchart

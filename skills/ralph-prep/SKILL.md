@@ -1,9 +1,9 @@
 ---
-name: ralph
-description: "Convert PRDs to ralph.json format for the Ralph autonomous agent system. Use when you have an existing PRD and need to convert it to Ralph's JSON format. Triggers on: convert this prd, turn this into ralph format, create ralph.json from this, ralph json."
+name: ralph-prep
+description: "**REQUIRED** - Convert PRDs to ralph.json format for the Ralph autonomous agent system. Use when you have an existing PRD and need to convert it to Ralph's execution format. Triggers on: convert this prd, prep this prd, turn this into ralph format, create ralph.json from this, ralph json, ralph prep."
 ---
 
-Convert the users plan into a self-contained Ralph execution directory.
+**REQUIRED SKILL** - Convert the users plan into a self-contained Ralph execution directory.
 
 ---
 

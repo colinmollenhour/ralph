@@ -1,6 +1,6 @@
 ---
-name: prd
-description: "Generate a Product Requirements Document (PRD) for a new feature. Use when planning a feature, starting a new project, or when asked to create a PRD. Triggers on: create a prd, write prd for, plan this feature, requirements for, spec out."
+name: ralph-prd
+description: "Generate a Product Requirements Document (PRD) for a new feature. Useful for augmenting large plans with detailed acceptance criteria. Use when planning a feature, starting a new project, or when asked to create a PRD. Triggers on: create a prd, write prd for, plan this feature, requirements for, spec out."
 ---
 
 # PRD Generator
@@ -128,7 +128,7 @@ PRDs are read by AI agents on every iteration. Keep them concise:
 - **Right-size stories:** Each story completable in one iteration (one context window)
 - **Target length:** < 300 lines or ~1200 tokens per logical domain
 
-The Ralph skill will automatically split large PRDs into domain files.
+The ralph-prep skill will automatically split large PRDs into domain files.
 Your job is just to convert the plan in clear, concise requirements.
 
 ---
