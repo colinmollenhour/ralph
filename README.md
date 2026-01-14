@@ -49,7 +49,8 @@ project-root/
 │   ├── auth/
 │   │   ├── README.md          # Primary plan
 │   │   ├── ralph.json         # Execution config with user stories
-│   │   ├── progress.txt       # Iteration log with learnings
+│   │   ├── progress.txt       # Simple iteration history
+│   │   ├── AGENTS.md          # Learnings (created on first task)
 │   │   └── [domain].md        # Domain-specific plans (if split)
 │   │
 │   └── archive/               # Completed runs
@@ -175,6 +176,8 @@ This creates `ralph/[feature-name]/` with:
 ./ralph.sh ralph/auth --tool claude      # Use Claude Code
 ./ralph.sh ralph/auth --tool opencode    # Use OpenCode
 ./ralph.sh ralph/auth --next-prompt      # Debug: see prompt without running
+./ralph.sh ralph/auth --learn            # Normal execution + learn on final iteration
+./ralph.sh ralph/auth --learn-now        # Just run learn prompt, no tasks
 
 # Stop a running Ralph
 ./ralph.sh --stop ralph/auth
@@ -200,7 +203,8 @@ Ralph will:
 | `plans/` | Source PRDs (user-created, read-only by Ralph) |
 | `ralph/[feature]/` | Execution directories (auto-generated) |
 | `ralph/[feature]/ralph.json` | User stories with `passes` status (the task list) |
-| `ralph/[feature]/progress.txt` | Append-only learnings for future iterations |
+| `ralph/[feature]/progress.txt` | Simple iteration history |
+| `ralph/[feature]/AGENTS.md` | Learnings for future iterations (created on first task) |
 | `skills/prd/` | Skill for generating PRDs |
 | `skills/ralph/` | Skill for converting PRDs to execution directories |
 | `flowchart/` | Interactive visualization of how Ralph works |
@@ -230,11 +234,11 @@ Each iteration spawns a **new AI instance** (Amp, Claude Code, or OpenCode) with
 
 ### Token Efficiency
 
-Ralph is designed to minimize token usage per iteration:
-- Never read full `ralph.json` - use `jq` queries
-- Load only relevant sections of `progress.txt`
-- Story-specific domain files only loaded when needed
-- Expected overhead: ~1350-3000 tokens vs ~8000-15000 in naive approach
+Ralph pre-computes all context and injects it directly into the prompt:
+- Story details, acceptance criteria, and commands are pre-computed
+- Learnings from `AGENTS.md` are included in the prompt
+- Agents don't need to read ralph.json or extract story details
+- Expected overhead: ~1800-3500 tokens vs ~8000-15000 in naive approach
 
 ### Small Tasks
 
@@ -251,9 +255,15 @@ Too big (split these):
 - "Add authentication"
 - "Refactor the API"
 
-### AGENTS.md Updates Are Critical
+### Learnings Storage
 
-After each iteration, Ralph updates the relevant `AGENTS.md` files with learnings. This is key because AI coding tools automatically read these files, so future iterations (and future human developers) benefit from discovered patterns, gotchas, and conventions.
+Each Ralph project has its own `AGENTS.md` file (created automatically on first task). Agents append learnings here during execution.
+
+To absorb learnings into the project root `./AGENTS.md`:
+```bash
+./ralph.sh ralph/auth --learn      # Absorb after all stories complete
+./ralph.sh ralph/auth --learn-now  # Absorb immediately (no tasks)
+```
 
 Examples of what to add to AGENTS.md:
 - Patterns discovered ("this codebase uses X for Y")
@@ -327,6 +337,33 @@ git checkout HEAD~1 -- ralph/auth/
 ## Archiving
 
 Ralph automatically archives previous runs when you start a new feature (different `branchName`). Archives are saved to `ralph/archive/YYYY-MM-DD-feature-name/`.
+
+## Testing with test-project
+
+A minimal test project is included to try Ralph without affecting your own codebase.
+
+```bash
+# Set up the test project
+cd test-project
+git init
+git add .
+git commit -m "Initial commit"
+
+# Check the status
+../ralph.sh --status ralph/add-math-functions
+
+# Preview what Ralph will do
+../ralph.sh --next-prompt ralph/add-math-functions
+
+# Run Ralph (requires amp, claude, or opencode to be installed)
+../ralph.sh ralph/add-math-functions --tool amp
+# or
+../ralph.sh ralph/add-math-functions --tool claude
+# or
+../ralph.sh ralph/add-math-functions --tool opencode
+```
+
+The test project has 5 simple user stories that add math functions to `src/math.ts`. Each story is small enough to complete in a single iteration, making it ideal for testing Ralph's behavior.
 
 ## References
 

@@ -9,7 +9,57 @@
 
 set -e
 
+# =============================================================================
+# Color and Emoji Support
+# =============================================================================
+# Respects NO_COLOR environment variable (https://no-color.org/)
+# Also auto-disables when stdout is not a terminal (e.g., piping to file)
+
+setup_colors() {
+  if [[ "${NO_COLOR:-}" == "true" ]] || [[ "${NO_COLOR:-}" == "1" ]] || [[ ! -t 1 ]]; then
+    # No colors
+    RED='' GREEN='' YELLOW='' BLUE='' CYAN='' BOLD='' DIM='' NC=''
+    # No emojis
+    E_ROCKET='' E_CHECK='' E_PARTY='' E_FINISH='' E_SPARKLE=''
+    E_WARN='' E_ERROR='' E_STOP='' E_CLOCK='' E_BOOK='' E_FILE=''
+    E_FOLDER='' E_MEMO='' E_CHART='' E_LOOP='' E_BOX_CHECK='' E_BOX_EMPTY=''
+  else
+    # ANSI color codes
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;34m'
+    CYAN='\033[0;36m'
+    BOLD='\033[1m'
+    DIM='\033[2m'
+    NC='\033[0m'  # No Color / Reset
+    # Emojis
+    E_ROCKET='🚀'
+    E_CHECK='✅'
+    E_PARTY='🎉'
+    E_FINISH='🏁'
+    E_SPARKLE='✨'
+    E_WARN='⚠️ '
+    E_ERROR='❌'
+    E_STOP='🛑'
+    E_CLOCK='⏱️ '
+    E_BOOK='📚'
+    E_FILE='📄'
+    E_FOLDER='📁'
+    E_MEMO='📝'
+    E_CHART='📊'
+    E_LOOP='🔄'
+    E_BOX_CHECK='✅'
+    E_BOX_EMPTY='⬜'
+  fi
+}
+
+# Initialize colors (may be called again after parsing --no-color flag)
+setup_colors
+
+# =============================================================================
 # Help function
+# =============================================================================
 show_help() {
   cat << 'EOF'
 Ralph - Autonomous AI agent loop for completing PRD user stories
@@ -27,9 +77,13 @@ OPTIONS:
   --tool <name>          AI tool to use: amp, claude, or opencode (default: amp)
   --tool-path <path>     Explicit path to tool executable (overrides auto-detection)
   --custom-prompt <file> Use a custom prompt file instead of the embedded default
-  --eject-prompt         Create .agents/ralph.md with the default prompt for customization
+  --eject-prompt         Create .agents/ralph.md prompt template for customization
   --next-prompt          Debug mode: show what would be sent to LLM without running it
+  --status               Show project status (stories, progress, metadata)
   --stop                 Signal Ralph to stop before the next iteration
+  --learn                Add learn section to prompt; runs learn-only if all stories complete
+  --learn-now            Run only the learn prompt (absorb learnings into ./AGENTS.md)
+  --no-color             Disable colors and emojis (also respects NO_COLOR env var)
   --help, -h             Show this help message
   --                     Everything after -- is passed to the tool as additional arguments
 
@@ -52,8 +106,13 @@ EXAMPLES:
   ralph.sh -n 5 ralph/auth              # Run with 5 max iterations
   ralph.sh ralph/auth -n 5              # Flags can come after path
   ralph.sh --next-prompt ralph/auth     # Debug: see prompt without running LLM
+  ralph.sh --status ralph/auth          # Show project status
   ralph.sh --tool claude ralph/auth     # Run with Claude Code
   ralph.sh --stop ralph/auth            # Stop a running Ralph project
+  ralph.sh ralph/auth --learn           # Normal execution + learn on final iteration
+  ralph.sh ralph/auth --learn-now       # Just run learn prompt, no tasks
+  ralph.sh --eject-prompt               # Create reusable prompt template
+  ralph.sh --no-color ralph/auth        # Run without colors/emojis
 
 GETTING STARTED:
   1. Create a PRD using the 'prd' skill:
@@ -74,9 +133,10 @@ CUSTOMIZING THE PROMPT:
   3. Embedded default prompt
 
   To customize for your project:
-  1. Run: ./ralph.sh --eject-prompt ralph/auth
-  2. Edit ralph/auth/.agents/ralph.md
-  3. Ralph will automatically use it
+  1. Run: ./ralph.sh --eject-prompt
+  2. Copy .agents/ralph.md to your ralph project: cp .agents/ralph.md ralph/auth/.agents/
+  3. Edit ralph/auth/.agents/ralph.md
+  4. Ralph will automatically use it
 
 EXIT CODES:
   0 - All stories completed successfully
@@ -96,6 +156,9 @@ TOOL_PATH=""  # Optional explicit path to tool executable
 EJECT_PROMPT_FLAG=false  # Flag for --eject-prompt
 RALPH_JSON=""  # Path to ralph.json
 NEXT_PROMPT_FLAG=false  # Debug mode
+LEARN_FLAG=false  # Flag for --learn
+LEARN_NOW_FLAG=false  # Flag for --learn-now
+STATUS_FLAG=false  # Flag for --status
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -104,6 +167,23 @@ while [[ $# -gt 0 ]]; do
       ;;
     --next-prompt)
       NEXT_PROMPT_FLAG=true
+      shift
+      ;;
+    --learn)
+      LEARN_FLAG=true
+      shift
+      ;;
+    --learn-now)
+      LEARN_NOW_FLAG=true
+      shift
+      ;;
+    --status)
+      STATUS_FLAG=true
+      shift
+      ;;
+    --no-color)
+      NO_COLOR=true
+      setup_colors  # Re-initialize with colors disabled
       shift
       ;;
     -n|--number)
@@ -159,23 +239,23 @@ while [[ $# -gt 0 ]]; do
           if [[ -f "$1/ralph.json" ]]; then
             RALPH_JSON="$1/ralph.json"
           else
-            echo "Error: No ralph.json found in $1"
+            echo -e "${RED}${E_ERROR} Error: No ralph.json found in $1${NC}"
             exit 1
           fi
         elif [[ -f "$1" ]]; then
           # File given - verify it's ralph.json
           if [[ "$(basename "$1")" != "ralph.json" ]]; then
-            echo "Error: File must be named ralph.json, got: $1"
+            echo -e "${RED}${E_ERROR} Error: File must be named ralph.json, got: $1${NC}"
             exit 1
           fi
           RALPH_JSON="$1"
         else
-          echo "Error: Path not found: $1"
+          echo -e "${RED}${E_ERROR} Error: Path not found: $1${NC}"
           exit 1
         fi
         shift
       else
-        echo "Error: Multiple paths specified"
+        echo -e "${RED}${E_ERROR} Error: Multiple paths specified${NC}"
         exit 1
       fi
       ;;
@@ -184,7 +264,7 @@ done
 
 # Validate tool choice
 if [[ "$TOOL" != "amp" && "$TOOL" != "claude" && "$TOOL" != "opencode" ]]; then
-  echo "Error: Invalid tool '$TOOL'. Must be 'amp', 'claude', or 'opencode'."
+  echo -e "${RED}${E_ERROR} Error: Invalid tool '$TOOL'. Must be 'amp', 'claude', or 'opencode'.${NC}"
   exit 1
 fi
 
@@ -194,22 +274,22 @@ TOOL_CMD="$TOOL"  # Default to the tool name
 if [[ -n "$TOOL_PATH" ]]; then
   # Use explicit tool path if provided
   if [[ ! -f "$TOOL_PATH" ]]; then
-    echo "Error: Tool path not found: $TOOL_PATH"
+    echo -e "${RED}${E_ERROR} Error: Tool path not found: $TOOL_PATH${NC}"
     exit 1
   fi
   if [[ ! -x "$TOOL_PATH" ]]; then
-    echo "Error: Tool path is not executable: $TOOL_PATH"
+    echo -e "${RED}${E_ERROR} Error: Tool path is not executable: $TOOL_PATH${NC}"
     exit 1
   fi
   TOOL_CMD="$TOOL_PATH"
-  echo "Using explicit tool path: $TOOL_PATH"
+  echo -e "${DIM}Using explicit tool path: $TOOL_PATH${NC}"
 elif ! type "$TOOL" &> /dev/null; then
   # Tool not in PATH, check for known fallback locations
   if [[ "$TOOL" == "claude" ]] && [[ -f "$HOME/.claude/local/claude" ]]; then
-    echo "Using local Claude installation: ~/.claude/local/claude"
+    echo -e "${DIM}Using local Claude installation: ~/.claude/local/claude${NC}"
     TOOL_CMD="$HOME/.claude/local/claude"
   else
-    echo "Error: Tool '$TOOL' is not available."
+    echo -e "${RED}${E_ERROR} Error: Tool '$TOOL' is not available.${NC}"
     echo "Please install or configure '$TOOL' before running Ralph."
     echo "Alternatively, use --tool-path to specify the exact path to the tool."
     exit 1
@@ -218,31 +298,31 @@ fi
 
 # Validate custom prompt file if provided
 if [[ -n "$CUSTOM_PROMPT" ]] && [[ ! -f "$CUSTOM_PROMPT" ]]; then
-  echo "Error: Custom prompt file not found: $CUSTOM_PROMPT"
+  echo -e "${RED}${E_ERROR} Error: Custom prompt file not found: $CUSTOM_PROMPT${NC}"
   exit 1
 fi
 
 # Check if jq is available
 if ! command -v jq &> /dev/null; then
-  echo "Error: jq is required but not installed."
+  echo -e "${RED}${E_ERROR} Error: jq is required but not installed.${NC}"
   echo "Please install jq: https://jqlang.github.io/jq/download/"
   exit 1
 fi
 
 # Check if sponge is available
 if ! command -v sponge &> /dev/null; then
-  echo "Error: sponge (from moreutils) is required but not installed."
+  echo -e "${RED}${E_ERROR} Error: sponge (from moreutils) is required but not installed.${NC}"
   echo "Install with: brew install moreutils (macOS) or apt-get install moreutils (Ubuntu)"
   exit 1
 fi
 
 # If no RALPH_JSON specified, show interactive chooser
-if [[ -z "$RALPH_JSON" ]] && [[ "$EJECT_PROMPT_FLAG" != true ]]; then
+if [[ -z "$RALPH_JSON" ]] && [[ "$EJECT_PROMPT_FLAG" != true ]] && [[ "$STATUS_FLAG" != true ]]; then
   # Find all ralph.json files
   mapfile -t RALPH_FILES < <(find ralph -name "ralph.json" -type f 2>/dev/null | grep -v "archive/" | sort)
   
   if [[ ${#RALPH_FILES[@]} -eq 0 ]]; then
-    echo "Error: No Ralph projects found in ralph/"
+    echo -e "${RED}${E_ERROR} Error: No Ralph projects found in ralph/${NC}"
     echo "Use the 'ralph' skill to convert a PRD to ralph.json first."
     exit 1
   fi
@@ -250,7 +330,7 @@ if [[ -z "$RALPH_JSON" ]] && [[ "$EJECT_PROMPT_FLAG" != true ]]; then
   # Build menu with completion stats (output to stderr so it doesn't pollute stdout for piping)
   INCOMPLETE_FILES=()
   echo "" >&2
-  echo "Available Ralph projects:" >&2
+  echo -e "${CYAN}${E_CHART} Available Ralph projects:${NC}" >&2
   echo "" >&2
   
   for i in "${!RALPH_FILES[@]}"; do
@@ -262,9 +342,9 @@ if [[ -z "$RALPH_JSON" ]] && [[ "$EJECT_PROMPT_FLAG" != true ]]; then
     num=$((i + 1))
     
     if [[ "$complete" -eq "$total" ]]; then
-      echo "  $num. $desc ($complete/$total complete) [DONE]" >&2
+      echo -e "  ${GREEN}$num. $desc ($complete/$total complete) ${E_CHECK}${NC}" >&2
     else
-      echo "  $num. $desc ($complete/$total complete)" >&2
+      echo -e "  $num. $desc ${DIM}($complete/$total complete)${NC}" >&2
       INCOMPLETE_FILES+=("$file")
     fi
   done
@@ -274,23 +354,23 @@ if [[ -z "$RALPH_JSON" ]] && [[ "$EJECT_PROMPT_FLAG" != true ]]; then
   # Auto-select if exactly one incomplete
   if [[ ${#INCOMPLETE_FILES[@]} -eq 1 ]]; then
     RALPH_JSON="${INCOMPLETE_FILES[0]}"
-    echo "Auto-selected: $RALPH_JSON" >&2
+    echo -e "${DIM}Auto-selected: $RALPH_JSON${NC}" >&2
     echo "" >&2
   elif [[ ${#INCOMPLETE_FILES[@]} -eq 0 ]]; then
-    echo "All projects complete!" >&2
+    echo -e "${GREEN}${E_PARTY} All projects complete!${NC}" >&2
     exit 0
   else
     # Prompt for selection
     read -p "Select a project [1-${#RALPH_FILES[@]}]: " selection
     
     if [[ -z "$selection" ]]; then
-      echo "Error: No selection made" >&2
+      echo -e "${RED}${E_ERROR} Error: No selection made${NC}" >&2
       exit 1
     elif [[ ! "$selection" =~ ^[0-9]+$ ]]; then
-      echo "Error: Selection must be a number" >&2
+      echo -e "${RED}${E_ERROR} Error: Selection must be a number${NC}" >&2
       exit 1
     elif [[ "$selection" -lt 1 ]] || [[ "$selection" -gt "${#RALPH_FILES[@]}" ]]; then
-      echo "Error: Selection out of range (1-${#RALPH_FILES[@]})" >&2
+      echo -e "${RED}${E_ERROR} Error: Selection out of range (1-${#RALPH_FILES[@]})${NC}" >&2
       exit 1
     fi
     
@@ -310,11 +390,11 @@ fi
 # Handle --stop flag now that we know the directory
 if [[ "$STOP_FLAG" == true ]]; then
   if [[ -z "$RALPH_JSON" ]]; then
-    echo "Error: --stop requires a ralph project path"
+    echo -e "${RED}${E_ERROR} Error: --stop requires a ralph project path${NC}"
     exit 1
   fi
   touch "$STOP_FILE"
-  echo "Stop signal sent. Ralph will stop before the next iteration."
+  echo -e "${YELLOW}${E_STOP} Stop signal sent. Ralph will stop before the next iteration.${NC}"
   exit 0
 fi
 
@@ -326,12 +406,6 @@ init_progress_header() {
 
   echo "# Ralph Progress Log"
   echo "Started: $(date '+%Y-%m-%d %H:%M')"
-  echo "Tool: $tool"
-
-  # Add tool args if present
-  if [[ -n "$tool_args" ]]; then
-    echo "Tool args: $tool_args"
-  fi
 
   # Extract and add source from ralph.json if present
   if [ -f "$ralph_json" ]; then
@@ -342,178 +416,281 @@ init_progress_header() {
   fi
 
   echo "---"
-  echo ""
-  echo "## Codebase Patterns"
-  echo "(Agents will populate this section with reusable learnings)"
-  echo ""
-  echo "## Iteration History"
 }
 
-# Generate the prompt - conditionally include AMP thread URL section
+# Generate the prompt with pre-computed variables
+# All variables are substituted at runtime before this function is called
 generate_prompt() {
   local tool="$1"
+  local story_id="$2"
+  local story_title="$3"
+  local story_description="$4"
+  local story_criteria="$5"
+  local primary_plan_path="$6"
+  local story_plan_path="$7"
+  local codebase_patterns="$8"
+  local branch_name="$9"
+  local update_story_cmd="${10}"
+  local ralph_dir="${11}"
+  local ralph_json="${12}"
+  local progress_file="${13}"
+  local learnings_file="${14}"
+  local is_last_story="${15}"
+  local learn_flag="${16}"
   
-  # Base prompt content
-  # Note: Uses $RALPH_JSON and $PROGRESS_FILE placeholders - these are substituted
-  # with actual paths by sed before sending to the agent
-  cat << 'PROMPT_START'
-You are to complete one task from the Ralph project which is represented by the files in: $RALPH_DIR
+  # Build the prompt
+  cat << PROMPT_HEADER
+# Ralph Agent Task
 
-## Token Efficiency Rules (Critical)
+## Current Story: $story_id - $story_title
 
-To minimize token usage on each iteration:
+$story_description
 
-1. **NEVER read the ralph.json directly** - Use jq queries exclusively:
-   ```bash
-   # Get current story
-   jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSON"
-   
-   # Get branch name
-   jq -r '.branchName' "$RALPH_JSON"
-   
-   # Check if all complete
-   jq 'all(.userStories[]; .passes == true)' "$RALPH_JSON"
+### Acceptance Criteria
+$story_criteria
+
+### Context Files
+- Primary plan: \`$primary_plan_path\`
+PROMPT_HEADER
+
+  # Story plan line (only if story has source field)
+  if [[ -n "$story_plan_path" ]]; then
+    echo "- Story details: \`$story_plan_path\`"
+  fi
+
+  # Learnings section (only if learnings file exists and non-empty)
+  if [[ -n "$codebase_patterns" ]]; then
+    cat << LEARNINGS_SECTION
+
+### Learnings from Previous Iterations
+$codebase_patterns
+LEARNINGS_SECTION
+  fi
+
+  cat << 'PROMPT_INSTRUCTIONS'
+
+---
+
+## Instructions
+
+1. **Checkout branch**: 
+PROMPT_INSTRUCTIONS
+
+  echo "   \`\`\`bash"
+  echo "   git checkout \"$branch_name\" 2>/dev/null || git checkout -b \"$branch_name\""
+  echo "   \`\`\`"
+
+  cat << 'PROMPT_INSTRUCTIONS2'
+
+2. **Read context**: Load the plan files listed above if you need more details
+
+3. **Implement** the story, meeting all acceptance criteria
+
+4. **Run quality checks** (typecheck, lint, test - whatever the project requires)
+
+PROMPT_INSTRUCTIONS2
+
+  echo "5. **Commit** with message starting: \`feat: $story_id - $story_title\`"
+  cat << 'PROMPT_INSTRUCTIONS3'
+   Add additional details in the commit body if helpful.
+
+6. **Mark story complete**:
+PROMPT_INSTRUCTIONS3
+
+  echo "   \`\`\`bash"
+  echo "   $update_story_cmd"
+  echo "   \`\`\`"
+
+  echo ""
+  echo "7. **Log progress** - Append to \`$progress_file\`:"
+  cat << PROGRESS_FORMAT
+   \`\`\`
+   ### [YYYY-MM-DD HH:MM] - $story_id
+PROGRESS_FORMAT
+
+  # Thread URL instruction (only for Amp)
+  if [[ "$tool" == "amp" ]]; then
+    echo '   Thread: https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID'
+  fi
+
+  cat << 'PROGRESS_FORMAT2'
+   Implemented: [1-2 sentence summary]
+   Files changed:
+   - path/to/file.ts (created/modified/deleted)
+   ---
    ```
 
-2. **Load context files surgically** (all paths relative to project root):
+PROGRESS_FORMAT2
+
+  echo "8. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to \`$learnings_file\`"
+
+  # Thread URL note (only for Amp)
+  if [[ "$tool" == "amp" ]]; then
+    cat << 'AMP_THREAD_NOTE'
+
+Include Amp thread URL in progress log: https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID
+AMP_THREAD_NOTE
+  fi
+
+  # Cleanup section (only if last story)
+  if [[ "$is_last_story" == "true" ]]; then
+    cat << CLEANUP_SECTION
+
+## Final Cleanup (Last Story!)
+
+This is the last story. After completing it:
+
+1. Run cleanup:
+   \`\`\`bash
+   git rm --cached -r "$ralph_dir"
+   git commit -m "chore: cleanup $ralph_dir working files"
+   \`\`\`
+
+2. Reply with: \`<promise>COMPLETE</promise>\`
+CLEANUP_SECTION
+  fi
+
+  # Learn section (only if --learn flag and last story)
+  if [[ "$learn_flag" == "true" && "$is_last_story" == "true" ]]; then
+    cat << LEARN_SECTION
+
+## Absorb Learnings
+
+Read \`$learnings_file\` and merge valuable learnings into \`./AGENTS.md\` (project root):
+- Deduplicate with existing entries
+- Group related learnings together  
+- Remove feature-specific details that won't apply to future work
+- Keep learnings that would help future development in this codebase
+LEARN_SECTION
+  fi
+
+  cat << 'QUALITY_REQUIREMENTS'
+
+## Quality Requirements
+- All commits must pass quality checks
+- Keep changes focused and minimal
+- Follow existing code patterns
+QUALITY_REQUIREMENTS
+}
+
+# Generate learn-only prompt
+generate_learn_prompt() {
+  local learnings_file="$1"
+  local learnings_content="$2"
+  
+  cat << LEARN_PROMPT
+# Absorb Learnings
+
+Read the following learnings and merge them into \`./AGENTS.md\` (project root):
+
+## Learnings from $learnings_file
+
+$learnings_content
+
+## Instructions
+
+1. Read \`./AGENTS.md\` if it exists
+2. Merge valuable learnings:
+   - Deduplicate with existing entries
+   - Group related learnings together  
+   - Remove feature-specific details that won't apply to future work
+   - Keep learnings that would help future development in this codebase
+3. Write the updated file
+
+Reply with: \`<promise>COMPLETE</promise>\` when done.
+LEARN_PROMPT
+}
+
+# Handle --eject-prompt flag (now that generate_prompt is defined)
+# This creates a reusable template in .agents/ralph.md (current directory)
+# No project path required - outputs template with $VARIABLE placeholders
+if [ "$EJECT_PROMPT_FLAG" = true ]; then
+  EJECT_DIR=".agents"
+  EJECT_FILE="$EJECT_DIR/ralph.md"
+  
+  if [ -f "$EJECT_FILE" ]; then
+    echo -e "${RED}${E_ERROR} Error: $EJECT_FILE already exists.${NC}"
+    echo "Delete it first if you want to regenerate it."
+    exit 1
+  fi
+  
+  mkdir -p "$EJECT_DIR"
+  
+  # Generate template with $VARIABLE placeholders (not substituted)
+  cat > "$EJECT_FILE" << 'TEMPLATE_EOF'
+<!-- Ralph Prompt Template
+
+Available variables (substituted at runtime):
+  $RALPH_DIR          - Ralph project directory (e.g., ralph/auth)
+  $RALPH_JSON         - Path to ralph.json
+  $PROGRESS_FILE      - Path to progress.txt
+  $LEARNINGS_FILE     - Path to AGENTS.md in ralph dir
+  $BRANCH_NAME        - Git branch name
+  $STORY_ID           - Current story ID (e.g., US-001)
+  $STORY_TITLE        - Current story title
+  $STORY_DESCRIPTION  - Current story description (not directly available in template)
+  $STORY_CRITERIA     - Acceptance criteria as bullet list (not directly available)
+  $PRIMARY_PLAN_PATH  - Path to README.md
+  $STORY_PLAN_PATH    - Path to story-specific plan (if exists)
+  $CODEBASE_PATTERNS  - Contents of LEARNINGS_FILE (not directly available)
+  $UPDATE_STORY_CMD   - Command to mark story complete (not directly available)
+
+Note: Some variables like $STORY_DESCRIPTION, $STORY_CRITERIA, $CODEBASE_PATTERNS,
+and $UPDATE_STORY_CMD are only available in the embedded prompt, not in custom
+templates. Custom templates receive the simpler variables via sed substitution.
+
+To use this template:
+  1. Copy to your ralph project: cp .agents/ralph.md ralph/myproject/.agents/
+  2. Edit as needed
+  3. Ralph will automatically use it when running that project
+
+-->
+
+# Ralph Agent Task
+
+## Current Story: $STORY_ID - $STORY_TITLE
+
+Read the story details from ralph.json:
+```bash
+jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSON"
+```
+
+### Context Files
+- Primary plan: `$PRIMARY_PLAN_PATH`
+- Learnings: `$LEARNINGS_FILE`
+
+---
+
+## Instructions
+
+1. **Checkout branch**: 
    ```bash
-   # Primary plan (always present)
-   cat $(jq -r '.source' "$RALPH_JSON")
-   
-   # Story-specific plan (optional - only if story has source field)
-   STORY_SOURCE=$(jq -r '[.userStories[] | select(.passes == false)] | min_by(.priority) | .source // empty' "$RALPH_JSON")
-   [[ -n "$STORY_SOURCE" ]] && cat "$STORY_SOURCE"
+   git checkout "$BRANCH_NAME" 2>/dev/null || git checkout -b "$BRANCH_NAME"
    ```
 
-3. **Load progress context efficiently**:
-   ```bash
-   # Patterns + header (always small)
-   sed -n '1,/^## Iteration History/p' "$PROGRESS_FILE"
-   
-   # Recent history (last 50 lines for context)
-   tail -n 50 "$PROGRESS_FILE"
-   ```
+2. **Read context**: Load the plan files and story details from ralph.json
 
-## Your Task
+3. **Implement** the story, meeting all acceptance criteria
 
-1. Get the next story to work on:
-   ```bash
-   jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSON"
-   ```
+4. **Run quality checks** (typecheck, lint, test - whatever the project requires)
 
-2. Load context files (see Token Efficiency Rules above for exact commands)
+5. **Commit** with message starting: `feat: $STORY_ID - $STORY_TITLE`
 
-3. Get branch name and check out/create:
-   ```bash
-   BRANCH=$(jq -r '.branchName' "$RALPH_JSON")
-   git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH"
-   ```
-
-4. Work on the user story (all requirements in story's description and acceptanceCriteria)
-
-5. Run quality checks (typecheck, lint, test - use whatever your project requires)
-
-6. Update AGENTS.md files if you discover reusable patterns (see below)
-
-7. If checks pass, commit ALL changes:
-   ```bash
-   STORY_ID=$(jq -r '[.userStories[] | select(.passes == false)] | min_by(.priority) | .id' "$RALPH_JSON")
-   STORY_TITLE=$(jq -r '[.userStories[] | select(.passes == false)] | min_by(.priority) | .title' "$RALPH_JSON")
-   git commit -m "feat: $STORY_ID - $STORY_TITLE"
-   ```
-
-8. Update the story status:
+6. **Mark story complete**:
    ```bash
    jq '(.userStories[] | select(.id == "'"$STORY_ID"'") | .passes) = true' "$RALPH_JSON" > "$RALPH_JSON.tmp" && mv "$RALPH_JSON.tmp" "$RALPH_JSON"
    ```
 
-9. Append your progress to $PROGRESS_FILE
+7. **Log progress** - Append to `$PROGRESS_FILE`:
+   ```
+   ### [YYYY-MM-DD HH:MM] - $STORY_ID
+   Implemented: [1-2 sentence summary]
+   Files changed:
+   - path/to/file.ts (created/modified/deleted)
+   ---
+   ```
 
-## Progress Report Format
-
-APPEND to $PROGRESS_FILE (never replace, always append):
-
-```
-### [YYYY-MM-DD HH:MM] - [Story ID]
-PROMPT_START
-
-  if [[ "$tool" == "amp" ]]; then
-    echo 'Thread: https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID'
-  fi
-
-  cat << 'PROMPT_END'
-Implemented: [1-2 sentence summary]
-Files changed:
-- path/to/file.ts (created/modified/deleted)
-- path/to/other.ts
-
- * Learning 1 (important patterns, gotchas, or context for future iterations)
- * Learning 2 (prefix with space + asterisk + space for parseability)
- * Learning 3 (use - for regular history items, * for learnings)
----
-```
-
-**Important about learnings:**
-- Use ` * ` prefix (space-asterisk-space) for learnings
-- Use `-` for regular history/file lists
-- This allows extracting just learnings with: `grep '^ \* ' "$PROGRESS_FILE"`
-- Keep learnings focused and actionable for future iterations
-
-PROMPT_END
-
-  if [[ "$tool" == "amp" ]]; then
-    cat << 'PROMPT_END'
-
-Include the thread URL so future iterations can use the `read_thread` tool to reference previous work if needed.
-PROMPT_END
-  fi
-
-  cat << 'PROMPT_END'
-
-## Consolidate Patterns
-
-If you discover a **reusable pattern**, add it to the `## Codebase Patterns` section at the TOP of $PROGRESS_FILE (create if doesn't exist):
-
-```
-## Codebase Patterns
- * Use sql<number> template for aggregations
- * Always use IF NOT EXISTS for migrations
- * Export types from actions.ts for UI components
-```
-
-Only add patterns that are **general and reusable**, not story-specific details.
-
-## Update AGENTS.md Files
-
-Before committing, check if any edited files have learnings worth preserving in nearby AGENTS.md files:
-
-1. **Identify directories with edited files**
-2. **Check for existing AGENTS.md** in those directories or parents
-3. **Add valuable learnings** like:
-   - API patterns or conventions specific to that module
-   - Gotchas or non-obvious requirements
-   - Dependencies between files
-   - Testing approaches for that area
-
-Only update AGENTS.md if you have **genuinely reusable knowledge** for that directory.
-
-## Quality Requirements
-
-- ALL commits must pass your project's quality checks (typecheck, lint, test)
-- Do NOT commit broken code
-- Keep changes focused and minimal
-- Follow existing code patterns
-
-## Browser Testing (Required for Frontend Stories)
-
-For any story that changes UI, you MUST verify it works in the browser:
-
-1. Load the `dev-browser` skill
-2. Navigate to the relevant page
-3. Verify the UI changes work as expected
-4. Take a screenshot if helpful for the progress log
-
-A frontend story is NOT complete until browser verification passes.
+8. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to `$LEARNINGS_FILE`
 
 ## Stop Condition
 
@@ -523,110 +700,223 @@ After completing a user story, check if ALL stories have `passes: true`:
 jq 'all(.userStories[]; .passes == true)' "$RALPH_JSON"
 ```
 
-If ALL stories are complete and passing:
+If ALL stories are complete:
 
-1. **Perform cleanup commit** - Remove Ralph working files from git but keep locally:
+1. **Perform cleanup commit**:
    ```bash
-   # Remove from git but keep on disk
    git rm --cached -r "$RALPH_DIR"
    git commit -m "chore: cleanup $RALPH_DIR working files"
    ```
 
-2. Then reply with: <promise>COMPLETE</promise>
+2. Reply with: `<promise>COMPLETE</promise>`
 
-The working files remain on disk in `ralph/auth/` for reference, but are removed from the branch.
-To restore: `git checkout HEAD~1 -- ralph/auth/`
-
-If there are still stories with `passes: false`, end your response normally (another iteration will pick up the next story).
-
-## Important
-
-- Work on ONE story per iteration
-- Commit frequently
-- Keep CI green
-- Read the Codebase Patterns section in $PROGRESS_FILE before starting
-PROMPT_END
-}
-
-# Handle --eject-prompt flag (now that generate_prompt is defined)
-if [ "$EJECT_PROMPT_FLAG" = true ]; then
-  if [[ -z "$RALPH_JSON" ]]; then
-    echo "Error: --eject-prompt requires a ralph project path"
-    echo "Usage: ./ralph.sh --eject-prompt ralph/auth"
-    exit 1
-  fi
+## Quality Requirements
+- All commits must pass quality checks
+- Keep changes focused and minimal
+- Follow existing code patterns
+TEMPLATE_EOF
   
-  EJECT_DIR="$RALPH_DIR/.agents"
-  EJECT_FILE="$EJECT_DIR/ralph.md"
-  
-  if [ -f "$EJECT_FILE" ]; then
-    echo "Error: $EJECT_FILE already exists."
-    echo "Delete it first if you want to regenerate it."
-    exit 1
-  fi
-  
-  mkdir -p "$EJECT_DIR"
-  
-  # Add header comment explaining available variables, then the prompt
-  {
-    cat << 'EJECT_HEADER'
-<!-- Ralph Prompt Template
-
-Available variables (substituted at runtime with actual paths):
-  RALPH_DIR      - Ralph project directory (e.g., ralph/auth)
-  RALPH_JSON     - Path to ralph.json (e.g., ralph/auth/ralph.json)  
-  PROGRESS_FILE  - Path to progress.txt (e.g., ralph/auth/progress.txt)
-
-In your prompt, use these as: $RALPH_DIR, $RALPH_JSON, $PROGRESS_FILE
-They are replaced with actual values when Ralph runs.
-
--->
-
-EJECT_HEADER
-    generate_prompt "$TOOL"
-  } > "$EJECT_FILE"
-  
-  echo "Created $EJECT_FILE"
+  echo -e "${GREEN}${E_CHECK} Created${NC} $EJECT_FILE"
   echo ""
-  echo "This file will now be used automatically when running ralph.sh for this project."
-  echo "Edit it to customize the prompt for your project."
-  echo ""
-  echo "Available variables: \$RALPH_DIR, \$RALPH_JSON, \$PROGRESS_FILE"
+  echo "To use this template:"
+  echo "  1. Copy to your ralph project: cp $EJECT_FILE ralph/myproject/.agents/"
+  echo "  2. Edit as needed"
+  echo "  3. Ralph will automatically use it"
   exit 0
 fi
+
+# Pre-compute variables function (used by --next-prompt and main loop)
+precompute_variables() {
+  # Pre-compute from ralph.json
+  BRANCH_NAME=$(jq -r '.branchName' "$RALPH_JSON")
+  PRIMARY_PLAN_PATH=$(jq -r '.source' "$RALPH_JSON")
+
+  # Current story details
+  CURRENT_STORY=$(jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSON")
+  STORY_ID=$(echo "$CURRENT_STORY" | jq -r '.id')
+  STORY_TITLE=$(echo "$CURRENT_STORY" | jq -r '.title')
+  STORY_DESCRIPTION=$(echo "$CURRENT_STORY" | jq -r '.description')
+  STORY_CRITERIA=$(echo "$CURRENT_STORY" | jq -r '.acceptanceCriteria[]' | sed 's/^/- /')
+  STORY_PLAN_PATH=$(echo "$CURRENT_STORY" | jq -r '.source // empty')
+
+  # Counts
+  STORIES_REMAINING=$(jq '[.userStories[] | select(.passes == false)] | length' "$RALPH_JSON")
+  IS_LAST_STORY=$([[ "$STORIES_REMAINING" -eq 1 ]] && echo "true" || echo "false")
+
+  # Learnings file
+  LEARNINGS_FILE="$RALPH_DIR/AGENTS.md"
+  if [[ -f "$LEARNINGS_FILE" ]]; then
+    CODEBASE_PATTERNS=$(cat "$LEARNINGS_FILE")
+  else
+    CODEBASE_PATTERNS=""
+  fi
+
+  # Pre-built update command
+  UPDATE_STORY_CMD="jq '(.userStories[] | select(.id == \"$STORY_ID\") | .passes) = true' \"$RALPH_JSON\" > \"$RALPH_JSON.tmp\" && mv \"$RALPH_JSON.tmp\" \"$RALPH_JSON\""
+}
+
+# Auto-create AGENTS.md function
+ensure_learnings_file() {
+  if [[ ! -f "$LEARNINGS_FILE" ]]; then
+    FEATURE_NAME=$(jq -r '.description // "Feature"' "$RALPH_JSON")
+    cat > "$LEARNINGS_FILE" << EOF
+# $FEATURE_NAME - Learnings
+
+(Learnings will be added here as you work on the feature)
+EOF
+  fi
+}
 
 # Handle --next-prompt flag
 # Headers go to stderr so prompt content can be piped to an agent
 if [[ "$NEXT_PROMPT_FLAG" = true ]]; then
   if [[ -z "$RALPH_JSON" ]]; then
-    echo "Error: --next-prompt requires a ralph project path" >&2
+    echo -e "${RED}${E_ERROR} Error: --next-prompt requires a ralph project path${NC}" >&2
     exit 1
   fi
   
-  echo "========== PROMPT (with paths substituted) ==========" >&2
-  # Show the prompt with variables substituted to actual paths
+  # Pre-compute all variables
+  precompute_variables
+  
+  # Check if all stories already complete
+  ALL_COMPLETE=$(jq 'all(.userStories[]; .passes == true)' "$RALPH_JSON" 2>/dev/null || echo "false")
+  
+  if [[ "$ALL_COMPLETE" == "true" ]]; then
+    if [[ "$LEARN_FLAG" == "true" || "$LEARN_NOW_FLAG" == "true" ]]; then
+      echo -e "${CYAN}========== LEARN PROMPT ==========${NC}" >&2
+      generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS"
+    else
+      echo -e "${GREEN}${E_PARTY} All stories complete! Nothing to do.${NC}" >&2
+    fi
+    exit 0
+  fi
+  
+  # Handle --learn-now (just show learn prompt)
+  if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
+    if [[ -z "$CODEBASE_PATTERNS" ]]; then
+      echo -e "${RED}${E_ERROR} Error: No learnings file found or file is empty at $LEARNINGS_FILE${NC}" >&2
+      exit 1
+    fi
+    echo -e "${CYAN}========== LEARN PROMPT ==========${NC}" >&2
+    generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS"
+    exit 0
+  fi
+  
+  echo -e "${CYAN}========== PROMPT (with pre-computed variables) ==========${NC}" >&2
+  # Show the prompt with all variables
   if [[ -n "$CUSTOM_PROMPT" ]]; then
+    # For custom prompts, still use sed substitution
     sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
         -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
         -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g" \
+        -e "s|\\\$LEARNINGS_FILE|$LEARNINGS_FILE|g" \
+        -e "s|\\\$BRANCH_NAME|$BRANCH_NAME|g" \
+        -e "s|\\\$STORY_ID|$STORY_ID|g" \
+        -e "s|\\\$STORY_TITLE|$STORY_TITLE|g" \
         "$CUSTOM_PROMPT"
   elif [[ -f "$RALPH_DIR/.agents/ralph.md" ]]; then
     sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
         -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
         -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g" \
+        -e "s|\\\$LEARNINGS_FILE|$LEARNINGS_FILE|g" \
+        -e "s|\\\$BRANCH_NAME|$BRANCH_NAME|g" \
+        -e "s|\\\$STORY_ID|$STORY_ID|g" \
+        -e "s|\\\$STORY_TITLE|$STORY_TITLE|g" \
         "$RALPH_DIR/.agents/ralph.md"
   else
-    generate_prompt "$TOOL" | sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
-                                  -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
-                                  -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g"
+    generate_prompt "$TOOL" \
+      "$STORY_ID" \
+      "$STORY_TITLE" \
+      "$STORY_DESCRIPTION" \
+      "$STORY_CRITERIA" \
+      "$PRIMARY_PLAN_PATH" \
+      "$STORY_PLAN_PATH" \
+      "$CODEBASE_PATTERNS" \
+      "$BRANCH_NAME" \
+      "$UPDATE_STORY_CMD" \
+      "$RALPH_DIR" \
+      "$RALPH_JSON" \
+      "$PROGRESS_FILE" \
+      "$LEARNINGS_FILE" \
+      "$IS_LAST_STORY" \
+      "$LEARN_FLAG"
   fi
+  
+  exit 0
+fi
+
+# Handle --status flag
+if [[ "$STATUS_FLAG" = true ]]; then
+  if [[ -z "$RALPH_JSON" ]]; then
+    echo -e "${RED}${E_ERROR} Error: --status requires a ralph project path${NC}" >&2
+    exit 1
+  fi
+  
+  # Read data from ralph.json
+  PROJECT=$(jq -r '.project // "Unknown"' "$RALPH_JSON")
+  DESCRIPTION=$(jq -r '.description // "No description"' "$RALPH_JSON")
+  BRANCH_NAME=$(jq -r '.branchName // "Unknown"' "$RALPH_JSON")
+  SOURCE_PRD=$(jq -r '.source // "Unknown"' "$RALPH_JSON")
+  
+  # Get started date from progress.txt if it exists
+  STARTED=""
+  if [[ -f "$PROGRESS_FILE" ]]; then
+    STARTED=$(grep -m1 "^Started:" "$PROGRESS_FILE" 2>/dev/null | sed 's/Started: //' || echo "")
+  fi
+  
+  # Count stories
+  TOTAL_STORIES=$(jq '.userStories | length' "$RALPH_JSON")
+  COMPLETE_STORIES=$(jq '[.userStories[] | select(.passes == true)] | length' "$RALPH_JSON")
+  PERCENT=$((COMPLETE_STORIES * 100 / TOTAL_STORIES))
+  
+  # Print header
+  echo ""
+  echo -e "${CYAN}${E_CHART} Ralph Status: ${BOLD}$RALPH_DIR${NC}"
+  echo -e "${DIM}═══════════════════════════════════════════════════════════════${NC}"
+  echo ""
+  echo -e "  ${DIM}Project:${NC}     $PROJECT"
+  echo -e "  ${DIM}Description:${NC} $DESCRIPTION"
+  echo -e "  ${DIM}Branch:${NC}      $BRANCH_NAME"
+  echo -e "  ${DIM}Source PRD:${NC}  $SOURCE_PRD"
+  if [[ -n "$STARTED" ]]; then
+    echo -e "  ${DIM}Started:${NC}     $STARTED"
+  fi
+  echo ""
+  echo -e "${DIM}───────────────────────────────────────────────────────────────${NC}"
+  echo -e "  ${BOLD}User Stories${NC}"
+  echo -e "${DIM}───────────────────────────────────────────────────────────────${NC}"
+  echo ""
+  
+  # Print each story
+  jq -r '.userStories[] | "\(.passes)\t\(.id)\t\(.title)"' "$RALPH_JSON" | while IFS=$'\t' read -r passes id title; do
+    if [[ "$passes" == "true" ]]; then
+      echo -e "  ${GREEN}${E_BOX_CHECK}${NC} ${DIM}$id${NC} - $title"
+    else
+      echo -e "  ${E_BOX_EMPTY} ${DIM}$id${NC} - $title"
+    fi
+  done
+  
+  echo ""
+  echo -e "${DIM}───────────────────────────────────────────────────────────────${NC}"
+  
+  # Print progress summary with color based on completion
+  if [[ "$PERCENT" -eq 100 ]]; then
+    echo -e "  ${GREEN}${E_PARTY} Progress: $COMPLETE_STORIES/$TOTAL_STORIES stories complete (${PERCENT}%)${NC}"
+  elif [[ "$PERCENT" -ge 50 ]]; then
+    echo -e "  ${CYAN}Progress: $COMPLETE_STORIES/$TOTAL_STORIES stories complete (${PERCENT}%)${NC}"
+  else
+    echo -e "  Progress: $COMPLETE_STORIES/$TOTAL_STORIES stories complete (${PERCENT}%)"
+  fi
+  
+  echo -e "${DIM}═══════════════════════════════════════════════════════════════${NC}"
+  echo ""
   
   exit 0
 fi
 
 # Validate ralph.json exists
 if [[ -z "$RALPH_JSON" ]] || [[ ! -f "$RALPH_JSON" ]]; then
-  echo "Error: ralph.json not found."
+  echo -e "${RED}${E_ERROR} Error: ralph.json not found.${NC}"
   echo "Use the 'ralph' skill to convert a PRD to ralph.json first."
   exit 1
 fi
@@ -643,11 +933,11 @@ if [ -f "$RALPH_JSON" ] && [ -f "$LAST_BRANCH_FILE" ]; then
     FOLDER_NAME=$(echo "$LAST_BRANCH" | sed 's|^ralph/||')
     ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME"
     
-    echo "Archiving previous run: $LAST_BRANCH"
+    echo -e "${DIM}${E_FOLDER} Archiving previous run: $LAST_BRANCH${NC}"
     mkdir -p "$ARCHIVE_FOLDER"
     [ -f "$RALPH_JSON" ] && cp "$RALPH_JSON" "$ARCHIVE_FOLDER/"
     [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/"
-    echo "   Archived to: $ARCHIVE_FOLDER"
+    echo -e "${DIM}   Archived to: $ARCHIVE_FOLDER${NC}"
 
     # Reset progress file for new run
     init_progress_header "$RALPH_JSON" "$TOOL" "${TOOL_ARGS[*]}" > "$PROGRESS_FILE"
@@ -667,12 +957,51 @@ if [ ! -f "$PROGRESS_FILE" ]; then
   init_progress_header "$RALPH_JSON" "$TOOL" "${TOOL_ARGS[*]}" > "$PROGRESS_FILE"
 fi
 
-# Check for project-local prompt template and show message once
-if [[ -z "$CUSTOM_PROMPT" ]] && [[ -f "$RALPH_DIR/.agents/ralph.md" ]]; then
-  echo "Using project-local prompt: $RALPH_DIR/.agents/ralph.md"
+# Initialize learnings file path (will be created on first task)
+LEARNINGS_FILE="$RALPH_DIR/AGENTS.md"
+
+# Handle --learn-now flag (just run learn prompt, no tasks)
+if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
+  if [[ ! -f "$LEARNINGS_FILE" ]] || [[ ! -s "$LEARNINGS_FILE" ]]; then
+    echo -e "${RED}${E_ERROR} Error: No learnings file found at $LEARNINGS_FILE${NC}"
+    exit 1
+  fi
+  
+  CODEBASE_PATTERNS=$(cat "$LEARNINGS_FILE")
+  PROMPT=$(generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS")
+  
+  echo -e "${CYAN}${E_BOOK} Running learn-only prompt...${NC}"
+  
+  # Run the tool with learn prompt
+  if [[ "$TOOL" == "amp" ]]; then
+    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+  elif [[ "$TOOL" == "claude" ]]; then
+    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+  else
+    if ((${#TOOL_ARGS[@]})); then
+      OUTPUT=$("$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+    else
+      OUTPUT=$("$TOOL_CMD" run "$PROMPT" 2>&1 | tee /dev/stderr) || true
+    fi
+  fi
+  
+  if echo "$OUTPUT" | grep -q "<promise>COMPLETE</promise>"; then
+    echo ""
+    echo -e "${GREEN}${E_SPARKLE} Learnings absorbed successfully!${NC}"
+  fi
+  exit 0
 fi
 
-echo "Starting Ralph - Project: $RALPH_DIR - Tool: $TOOL - Max iterations: $MAX_ITERATIONS"
+# Check for project-local prompt template and show message once
+if [[ -z "$CUSTOM_PROMPT" ]] && [[ -f "$RALPH_DIR/.agents/ralph.md" ]]; then
+  echo -e "${CYAN}${E_FILE} Using project-local prompt:${NC} $RALPH_DIR/.agents/ralph.md"
+fi
+
+echo ""
+echo -e "${CYAN}${E_ROCKET} Starting Ralph${NC}"
+echo -e "   ${DIM}Project:${NC}        $RALPH_DIR"
+echo -e "   ${DIM}Tool:${NC}           $TOOL"
+echo -e "   ${DIM}Max iterations:${NC} $MAX_ITERATIONS"
 
 # Failure tracking for circuit breaker
 CONSECUTIVE_FAILURES=0
@@ -683,7 +1012,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   # Check for stop signal
   if [ -f "$STOP_FILE" ]; then
     echo ""
-    echo "Stop signal detected. Stopping gracefully..."
+    echo -e "${YELLOW}${E_STOP} Stop signal detected. Stopping gracefully...${NC}"
     rm -f "$STOP_FILE"
     exit 2
   fi
@@ -691,33 +1020,84 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   # Check if all stories complete
   ALL_COMPLETE=$(jq 'all(.userStories[]; .passes == true)' "$RALPH_JSON" 2>/dev/null || echo "false")
   if [ "$ALL_COMPLETE" = "true" ]; then
+    # If --learn flag and all complete, run learn prompt
+    if [[ "$LEARN_FLAG" == "true" ]]; then
+      if [[ -f "$LEARNINGS_FILE" ]] && [[ -s "$LEARNINGS_FILE" ]]; then
+        echo ""
+        echo -e "${CYAN}${E_BOOK} All stories complete. Running learn prompt...${NC}"
+        CODEBASE_PATTERNS=$(cat "$LEARNINGS_FILE")
+        PROMPT=$(generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS")
+        
+        if [[ "$TOOL" == "amp" ]]; then
+          OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+        elif [[ "$TOOL" == "claude" ]]; then
+          OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+        else
+          if ((${#TOOL_ARGS[@]})); then
+            OUTPUT=$("$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+          else
+            OUTPUT=$("$TOOL_CMD" run "$PROMPT" 2>&1 | tee /dev/stderr) || true
+          fi
+        fi
+        
+        echo ""
+        echo -e "${GREEN}${E_SPARKLE} Learnings absorbed!${NC}"
+      fi
+    fi
     echo ""
-    echo "Ralph already completed! All stories pass."
+    echo -e "${GREEN}${E_PARTY} Ralph already completed! All stories pass.${NC}"
     exit 0
   fi
 
+  # Pre-compute all variables for this iteration
+  precompute_variables
+  
+  # Ensure learnings file exists
+  ensure_learnings_file
+
   echo ""
-  echo "==============================================================="
-  echo "  Ralph Iteration $i of $MAX_ITERATIONS ($TOOL)"
-  echo "  Project: $RALPH_DIR"
-  echo "==============================================================="
+  echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
+  echo -e "${BLUE}║${NC} ${E_LOOP} ${BOLD}Ralph Iteration $i of $MAX_ITERATIONS${NC} ${DIM}($TOOL)${NC}"
+  echo -e "${BLUE}║${NC} ${E_FOLDER} ${DIM}Project:${NC} $RALPH_DIR"
+  echo -e "${BLUE}║${NC} ${E_MEMO} ${DIM}Story:${NC}   $STORY_ID - $STORY_TITLE"
+  echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
 
   # Generate the prompt - priority: --custom-prompt > .agents/ralph.md > embedded default
-  # Substitute $RALPH_DIR, $RALPH_JSON, $PROGRESS_FILE with actual paths
   if [[ -n "$CUSTOM_PROMPT" ]]; then
     PROMPT=$(sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
                  -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
                  -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g" \
+                 -e "s|\\\$LEARNINGS_FILE|$LEARNINGS_FILE|g" \
+                 -e "s|\\\$BRANCH_NAME|$BRANCH_NAME|g" \
+                 -e "s|\\\$STORY_ID|$STORY_ID|g" \
+                 -e "s|\\\$STORY_TITLE|$STORY_TITLE|g" \
                  "$CUSTOM_PROMPT")
   elif [[ -f "$RALPH_DIR/.agents/ralph.md" ]]; then
     PROMPT=$(sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
                  -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
                  -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g" \
+                 -e "s|\\\$LEARNINGS_FILE|$LEARNINGS_FILE|g" \
+                 -e "s|\\\$BRANCH_NAME|$BRANCH_NAME|g" \
+                 -e "s|\\\$STORY_ID|$STORY_ID|g" \
+                 -e "s|\\\$STORY_TITLE|$STORY_TITLE|g" \
                  "$RALPH_DIR/.agents/ralph.md")
   else
-    PROMPT=$(generate_prompt "$TOOL" | sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
-                                           -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
-                                           -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g")
+    PROMPT=$(generate_prompt "$TOOL" \
+      "$STORY_ID" \
+      "$STORY_TITLE" \
+      "$STORY_DESCRIPTION" \
+      "$STORY_CRITERIA" \
+      "$PRIMARY_PLAN_PATH" \
+      "$STORY_PLAN_PATH" \
+      "$CODEBASE_PATTERNS" \
+      "$BRANCH_NAME" \
+      "$UPDATE_STORY_CMD" \
+      "$RALPH_DIR" \
+      "$RALPH_JSON" \
+      "$PROGRESS_FILE" \
+      "$LEARNINGS_FILE" \
+      "$IS_LAST_STORY" \
+      "$LEARN_FLAG")
   fi
 
   # Record start time for failure detection
@@ -745,12 +1125,12 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   # Check for completion signal
   if echo "$OUTPUT" | grep -q "<promise>COMPLETE</promise>"; then
     echo ""
-    echo "Ralph completed all tasks!"
-    echo "Completed at iteration $i of $MAX_ITERATIONS"
+    echo -e "${GREEN}${E_FINISH} Ralph completed all tasks!${NC}"
+    echo -e "${DIM}Completed at iteration $i of $MAX_ITERATIONS${NC}"
     echo ""
-    echo "Working files have been cleaned up in a separate commit."
-    echo "To undo cleanup: git revert HEAD"
-    echo "To recover files: git checkout HEAD~1 -- $RALPH_DIR/"
+    echo -e "${DIM}Working files have been cleaned up in a separate commit.${NC}"
+    echo -e "${DIM}To undo cleanup: git revert HEAD${NC}"
+    echo -e "${DIM}To recover files: git checkout HEAD~1 -- $RALPH_DIR/${NC}"
     exit 0
   fi
   
@@ -758,28 +1138,28 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   if [ "$ITERATION_DURATION" -lt "$MIN_ITERATION_TIME" ]; then
     CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
     echo ""
-    echo "Warning: Iteration completed very quickly (${ITERATION_DURATION}s). This may indicate an error."
-    echo "Consecutive quick failures: $CONSECUTIVE_FAILURES/$MAX_FAILURES"
+    echo -e "${YELLOW}${E_WARN}Warning: Iteration completed very quickly (${ITERATION_DURATION}s). This may indicate an error.${NC}"
+    echo -e "${YELLOW}Consecutive quick failures: $CONSECUTIVE_FAILURES/$MAX_FAILURES${NC}"
     
     if [ "$CONSECUTIVE_FAILURES" -ge "$MAX_FAILURES" ]; then
       echo ""
-      echo "Error: Too many consecutive quick failures ($MAX_FAILURES)."
-      echo "This usually indicates a configuration problem (e.g., invalid model, missing permissions)."
+      echo -e "${RED}${E_ERROR} Error: Too many consecutive quick failures ($MAX_FAILURES).${NC}"
+      echo -e "${RED}This usually indicates a configuration problem (e.g., invalid model, missing permissions).${NC}"
       echo "Please check the error messages above and fix the issue before retrying."
       exit 1
     fi
     
-    echo "Sleeping 3 seconds before retry..."
+    echo -e "${DIM}Sleeping 3 seconds before retry...${NC}"
     sleep 3
   else
     # Reset failure counter on successful iteration
     CONSECUTIVE_FAILURES=0
-    echo "Iteration $i complete. Continuing..."
+    echo -e "${GREEN}${E_CHECK} Iteration $i complete.${NC} Continuing..."
     sleep 2
   fi
 done
 
 echo ""
-echo "Ralph reached max iterations ($MAX_ITERATIONS) without completing all tasks."
+echo -e "${YELLOW}${E_CLOCK}Ralph reached max iterations ($MAX_ITERATIONS) without completing all tasks.${NC}"
 echo "Check $PROGRESS_FILE for status."
 exit 1

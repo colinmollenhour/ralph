@@ -1,0 +1,51 @@
+{
+  "source": "ralph/test/README.md",
+  "project": "TestApp",
+  "branchName": "ralph/test-auth",
+  "description": "Test Feature - Authentication System",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Create users table schema",
+      "source": "ralph/test/database.md",
+      "description": "As a developer, I need a users table to store credentials.",
+      "acceptanceCriteria": [
+        "Add users table with email, passwordHash, createdAt",
+        "Email field is unique and indexed",
+        "Generate migration successfully",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Completed in iteration 1"
+    },
+    {
+      "id": "US-002",
+      "title": "Create login form component",
+      "source": "ralph/test/ui-components.md",
+      "description": "As a user, I want to log in with email and password.",
+      "acceptanceCriteria": [
+        "Form has email and password inputs",
+        "Submit button shows loading state",
+        "Validates email format before submit",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Completed in iteration 1"
+    },
+    {
+      "id": "US-003",
+      "title": "Fix button color",
+      "description": "As a user, I want the login button to be blue not red.",
+      "acceptanceCriteria": [
+        "Change button color to blue",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

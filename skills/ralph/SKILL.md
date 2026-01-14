@@ -22,6 +22,8 @@ Converts PRDs from plans/ into self-contained Ralph execution directories.
    - `ralph.json` - Execution config
    - `progress.txt` - Initialized with header
    - `[domain].md` files (if splitting)
+   
+Note: `AGENTS.md` (learnings file) is created automatically by ralph.sh on first task execution.
 
 **Important:** 
 - Directory name comes from source basename: `plans/auth.md` -> `ralph/auth/`
@@ -165,12 +167,9 @@ Initialize with this header:
 Started: [YYYY-MM-DD HH:MM]
 Source PRD: ralph/auth/README.md
 ---
-
-## Codebase Patterns
-(Agents will populate this section with reusable learnings)
-
-## Iteration History
 ```
+
+Note: progress.txt is now a simple iteration history. Learnings are stored in `AGENTS.md` (created automatically by ralph.sh on first task execution).
 
 ---
 
@@ -202,7 +201,8 @@ fi
 ralph/bugfix/
 ├── README.md          # Copy of plans/bugfix.md
 ├── ralph.json         # No story-level source fields
-└── progress.txt       # Initialized header
+├── progress.txt       # Initialized header
+└── AGENTS.md          # Created by ralph.sh on first run
 ```
 
 **ralph.json:**
@@ -235,6 +235,7 @@ ralph/auth/
 ├── README.md          # High-level overview
 ├── ralph.json         # Story sources point to domains
 ├── progress.txt       # Initialized
+├── AGENTS.md          # Created by ralph.sh on first run
 ├── database.md        # US-001, US-002
 ├── ui-components.md   # US-003, US-004, US-005
 └── api-endpoints.md   # US-006, US-007
