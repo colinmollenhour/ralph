@@ -653,8 +653,9 @@ PROMPT_HEADER
 4. **Complete the story** - Do ALL of the following before committing:
    a. Update ralph.json to mark story complete
    b. Append progress entry to progress.txt
-   c. Stage ALL changes (implementation + bookkeeping files)
-   d. Commit with message starting:
+   c. Record learnings (if any) to AGENTS.md
+   d. Stage ALL changes (implementation + bookkeeping files)
+   e. Commit with message starting:
 PROMPT_INSTRUCTIONS
 
   echo "      \`feat: $story_id - $story_title\`"
@@ -684,13 +685,15 @@ PROMPT_INSTRUCTIONS2
   echo "   ---"
   echo "   PROGRESS_ENTRY"
   echo ""
-  echo "   # c. Stage everything and commit"
+  echo "   # c. Record learnings (if any patterns/gotchas discovered)"
+  echo "   echo '- [Your learning here]' >> \"$learnings_file\""
+  echo ""
+  echo "   # d. Stage everything and commit"
   echo "   git add -A"
   echo "   git commit -m \"feat: $story_id - $story_title\""
   echo "   \`\`\`"
 
   echo ""
-  echo "5. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to \`$learnings_file\`"
 
   # Thread URL note (only for Amp)
   if [[ "$tool" == "amp" ]]; then
@@ -839,15 +842,16 @@ jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSO
 4. **Complete the story** - Do ALL of the following before committing:
    a. Update ralph.json to mark story complete
    b. Append progress entry to progress.txt
-   c. Stage ALL changes (implementation + bookkeeping files)
-   d. Commit with message starting: `feat: $STORY_ID - $STORY_TITLE`
+   c. Record learnings (if any) to AGENTS.md
+   d. Stage ALL changes (implementation + bookkeeping files)
+   e. Commit with message starting: `feat: $STORY_ID - $STORY_TITLE`
    
    This atomic commit ensures bookkeeping is never forgotten.
    
    Commands:
    ```bash
    # a. Mark story complete
-   jq '(.userStories[] | select(.id == "'"$STORY_ID"'") | .passes) = true' "$RALPH_JSON" > "$RALPH_JSON.tmp" && mv "$RALPH_JSON.tmp" "$RALPH_JSON"
+   jq '(.userStories[] | select(.id == "'\"$STORY_ID\"'") | .passes) = true' "$RALPH_JSON" > "$RALPH_JSON.tmp" && mv "$RALPH_JSON.tmp" "$RALPH_JSON"
    
    # b. Append progress
    cat >> "$PROGRESS_FILE" << 'PROGRESS_ENTRY'
@@ -858,12 +862,13 @@ jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSO
    ---
    PROGRESS_ENTRY
    
-   # c. Stage everything and commit
+   # c. Record learnings (if any patterns/gotchas discovered)
+   echo '- [Your learning here]' >> "$LEARNINGS_FILE"
+   
+   # d. Stage everything and commit
    git add -A
    git commit -m "feat: $STORY_ID - $STORY_TITLE"
    ```
-
-5. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to `$LEARNINGS_FILE`
 
 ## Stop Condition
 
