@@ -578,39 +578,49 @@ PROMPT_INSTRUCTIONS
 
 PROMPT_INSTRUCTIONS2
 
-  echo "5. **Commit** with message starting: \`feat: $story_id - $story_title\`"
   cat << 'PROMPT_INSTRUCTIONS3'
-   Add additional details in the commit body if helpful.
-
-6. **Mark story complete**:
+5. **Complete the story** - Do ALL of the following before committing:
+   a. Update ralph.json to mark story complete
+   b. Append progress entry to progress.txt
+   c. Stage ALL changes (implementation + bookkeeping files)
+   d. Commit with message starting:
 PROMPT_INSTRUCTIONS3
+  echo "      \`feat: $story_id - $story_title\`"
+  cat << 'PROMPT_INSTRUCTIONS4'
+   
+   This atomic commit ensures bookkeeping is never forgotten.
+   
+   Commands:
+PROMPT_INSTRUCTIONS4
 
   echo "   \`\`\`bash"
+  echo "   # a. Mark story complete"
   echo "   $update_story_cmd"
-  echo "   \`\`\`"
-
   echo ""
-  echo "7. **Log progress** - Append to \`$progress_file\`:"
+  echo "   # b. Append progress (edit $progress_file):"
   cat << PROGRESS_FORMAT
-   \`\`\`
-   ### [YYYY-MM-DD HH:MM] - $story_id
+   # ### [YYYY-MM-DD HH:MM] - $story_id
 PROGRESS_FORMAT
 
   # Thread URL instruction (only for Amp)
   if [[ "$tool" == "amp" ]]; then
-    echo '   Thread: https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID'
+    echo '   # Thread: https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID'
   fi
 
   cat << 'PROGRESS_FORMAT2'
-   Implemented: [1-2 sentence summary]
-   Files changed:
-   - path/to/file.ts (created/modified/deleted)
-   ---
-   ```
-
+   # Implemented: [1-2 sentence summary]
+   # Files changed:
+   # - path/to/file.ts (created/modified/deleted)
+   # ---
+   
+   # c. Stage everything and commit
+   git add -A
 PROGRESS_FORMAT2
+  echo "   git commit -m \"feat: $story_id - $story_title\""
+  echo "   \`\`\`"
 
-  echo "8. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to \`$learnings_file\`"
+  echo ""
+  echo "6. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to \`$learnings_file\`"
 
   # Thread URL note (only for Amp)
   if [[ "$tool" == "amp" ]]; then
@@ -762,23 +772,32 @@ jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSO
 
 4. **Run quality checks** (typecheck, lint, test - whatever the project requires)
 
-5. **Commit** with message starting: `feat: $STORY_ID - $STORY_TITLE`
-
-6. **Mark story complete**:
+5. **Complete the story** - Do ALL of the following before committing:
+   a. Update ralph.json to mark story complete
+   b. Append progress entry to progress.txt
+   c. Stage ALL changes (implementation + bookkeeping files)
+   d. Commit with message starting: `feat: $STORY_ID - $STORY_TITLE`
+   
+   This atomic commit ensures bookkeeping is never forgotten.
+   
+   Commands:
    ```bash
+   # a. Mark story complete
    jq '(.userStories[] | select(.id == "'"$STORY_ID"'") | .passes) = true' "$RALPH_JSON" > "$RALPH_JSON.tmp" && mv "$RALPH_JSON.tmp" "$RALPH_JSON"
+   
+   # b. Append progress (edit $PROGRESS_FILE):
+   # ### [YYYY-MM-DD HH:MM] - $STORY_ID
+   # Implemented: [1-2 sentence summary]
+   # Files changed:
+   # - path/to/file.ts (created/modified/deleted)
+   # ---
+   
+   # c. Stage everything and commit
+   git add -A
+   git commit -m "feat: $STORY_ID - $STORY_TITLE"
    ```
 
-7. **Log progress** - Append to `$PROGRESS_FILE`:
-   ```
-   ### [YYYY-MM-DD HH:MM] - $STORY_ID
-   Implemented: [1-2 sentence summary]
-   Files changed:
-   - path/to/file.ts (created/modified/deleted)
-   ---
-   ```
-
-8. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to `$LEARNINGS_FILE`
+6. **Record learnings** - If you discovered patterns, gotchas, or useful context, append to `$LEARNINGS_FILE`
 
 ## Stop Condition
 
