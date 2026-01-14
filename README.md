@@ -343,14 +343,10 @@ Ralph automatically archives previous runs when you start a new feature (differe
 A minimal test project is included to try Ralph without affecting your own codebase.
 
 ```bash
-# Set up the test project
 cd test-project
-git init
-git add .
-git commit -m "Initial commit"
 
-# Check the status
-../ralph.sh --status ralph/add-math-functions
+# Reset to initial state (creates git repo if needed)
+./reset.sh
 
 # Preview what Ralph will do
 ../ralph.sh --next-prompt ralph/add-math-functions
