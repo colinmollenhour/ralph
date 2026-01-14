@@ -1111,9 +1111,16 @@ fi
 
 echo ""
 echo -e "${CYAN}${E_ROCKET} Starting Ralph${NC}"
-echo -e "   ${DIM}Project:${NC}        $RALPH_DIR"
-echo -e "   ${DIM}Tool:${NC}           $TOOL"
+echo -e "   ${DIM}Project:${NC}        ${ORIG_RALPH_DIR:-$RALPH_DIR}"
+if ((${#TOOL_ARGS[@]})); then
+  echo -e "   ${DIM}Tool:${NC}           $TOOL ${TOOL_ARGS[*]}"
+else
+  echo -e "   ${DIM}Tool:${NC}           $TOOL"
+fi
 echo -e "   ${DIM}Max iterations:${NC} $MAX_ITERATIONS"
+if [[ -n "$ORIG_RALPH_DIR" ]]; then
+  echo -e "   ${DIM}Working dir:${NC}    $(pwd)"
+fi
 
 # Failure tracking for circuit breaker
 CONSECUTIVE_FAILURES=0
