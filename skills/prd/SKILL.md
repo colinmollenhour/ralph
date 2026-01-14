@@ -14,7 +14,7 @@ Create detailed Product Requirements Documents that are clear, actionable, and s
 1. Receive a feature description from the user
 2. Ask 3-5 essential clarifying questions (with lettered options)
 3. Generate a structured PRD based on answers
-4. Save to `tasks/prd-[feature-name].md`
+4. Save to `plans/[feature-name].md`
 
 **Important:** Do NOT start implementing. Just create the PRD.
 
@@ -119,6 +119,20 @@ Remaining questions or areas needing clarification.
 
 ---
 
+## Token Efficiency
+
+PRDs are read by AI agents on every iteration. Keep them concise:
+
+- **Be direct:** Use bullet points over paragraphs where possible
+- **Avoid repetition:** Don't repeat info from acceptance criteria in description
+- **Right-size stories:** Each story completable in one iteration (one context window)
+- **Target length:** < 300 lines or ~1200 tokens per logical domain
+
+The Ralph skill will automatically split large PRDs into domain files.
+Your job is just to write clear, concise requirements in `plans/`.
+
+---
+
 ## Writing for Junior Developers
 
 The PRD reader may be a junior developer or AI agent. Therefore:
@@ -134,8 +148,8 @@ The PRD reader may be a junior developer or AI agent. Therefore:
 ## Output
 
 - **Format:** Markdown (`.md`)
-- **Location:** `tasks/`
-- **Filename:** `prd-[feature-name].md` (kebab-case)
+- **Location:** `plans/`
+- **Filename:** `[feature-name].md` (kebab-case)
 
 ---
 
@@ -237,4 +251,4 @@ Before saving the PRD:
 - [ ] User stories are small and specific
 - [ ] Functional requirements are numbered and unambiguous
 - [ ] Non-goals section defines clear boundaries
-- [ ] Saved to `tasks/prd-[feature-name].md`
+- [ ] Saved to `plans/[feature-name].md`

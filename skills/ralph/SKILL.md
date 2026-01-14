@@ -1,32 +1,139 @@
 ---
 name: ralph
-description: "Convert PRDs to prd.json format for the Ralph autonomous agent system. Use when you have an existing PRD and need to convert it to Ralph's JSON format. Triggers on: convert this prd, turn this into ralph format, create prd.json from this, ralph json."
+description: "Convert PRDs to ralph.json format for the Ralph autonomous agent system. Use when you have an existing PRD and need to convert it to Ralph's JSON format. Triggers on: convert this prd, turn this into ralph format, create ralph.json from this, ralph json."
 ---
 
 # Ralph PRD Converter
 
-Converts existing PRDs to the prd.json format that Ralph uses for autonomous execution.
+Converts PRDs from plans/ into self-contained Ralph execution directories.
 
 ---
 
 ## The Job
 
-Take a PRD (markdown file or text from any path) and convert it to `./prd.json` in the project root (current working directory). The output path is always `./prd.json` regardless of where the input file is located.
+1. Read the source PRD (e.g., `plans/auth.md`)
+2. Analyze size: count chars, divide by 4 for rough token estimate
+3. Decide: Split or keep as single file?
+   - If > 3500 tokens OR > 300 lines: Split into domains
+   - Otherwise: Single README.md (copy of source)
+4. Create directory: `ralph/[basename]/` (basename = source filename without .md)
+5. Write files:
+   - `README.md` - Primary plan
+   - `ralph.json` - Execution config
+   - `progress.txt` - Initialized with header
+   - `[domain].md` files (if splitting)
+
+**Important:** 
+- Directory name comes from source basename: `plans/auth.md` -> `ralph/auth/`
+- If `ralph/auth/` already exists, ask user for instructions (overwrite/rename/cancel)
+- All paths in ralph.json are relative to project root
 
 ---
 
-## Output Format
+## Decision: Split or Single File?
+
+```bash
+# Calculate rough token count
+CHARS=$(wc -c < plans/auth.md)
+TOKENS=$((CHARS / 4))
+LINES=$(wc -l < plans/auth.md)
+
+# Decision logic
+if [[ $TOKENS -gt 3500 ]] || [[ $LINES -gt 300 ]]; then
+  SPLIT=true
+else
+  SPLIT=false
+fi
+```
+
+### If NOT splitting:
+- Copy source PRD to `ralph/auth/README.md`:
+  ```bash
+  cp plans/auth.md ralph/auth/README.md
+  ```
+- No story-level `source` fields in ralph.json
+- Agents read README.md + story JSON only
+
+### If splitting:
+- Create high-level overview in `ralph/auth/README.md`
+- Create domain files: `ralph/auth/database.md`, etc.
+- Add `source` field to each story pointing to its domain file
+
+---
+
+## Domain Auto-Detection (for splits)
+
+Group user stories by common domains using keyword matching:
+
+**Database/Schema** 
+- Keywords: table, column, migration, schema, database, index, model, entity
+- Example: "Add users table", "Create index on email"
+
+**Backend/API**
+- Keywords: endpoint, route, API, server action, middleware, handler, controller
+- Example: "Create login endpoint", "Add auth middleware"
+
+**UI Components**
+- Keywords: component, form, button, modal, page, layout, view, screen
+- Example: "Create login form", "Add dashboard layout"
+
+**Business Logic**
+- Keywords: service, util, helper, calculation, validation, transform, process
+- Example: "Add password hashing", "Implement JWT generation"
+
+**Testing**
+- Keywords: test, spec, e2e, integration, unit, fixture
+- Example: "Add login tests", "E2E authentication flow"
+
+**Infrastructure**
+- Keywords: deploy, build, config, docker, CI, environment
+- Example: "Add deployment script", "Configure auth env vars"
+
+### Splitting Strategy
+
+1. **Analyze all user stories** - Extract title + description
+2. **Keyword match** - Assign each story to a domain
+3. **Consolidate** - Aim for 2-5 domains (not too fragmented)
+4. **General domain fallback** - Stories that don't match -> "general.md"
+
+### Creating Domain Files
+
+Each domain file should contain:
+- Domain-specific requirements extracted from PRD
+- Details relevant to that domain's stories
+- Technical notes, constraints, patterns for that domain
+
+**Example: `ralph/auth/database.md`**
+```markdown
+# Authentication - Database Domain
+
+## Schema Requirements
+[Extract database-related requirements from original PRD]
+
+## Migration Strategy
+[Extract migration notes]
+
+## User Stories
+This domain covers:
+- US-001: Create users table
+- US-002: Add sessions table
+```
+
+---
+
+## Output Format: ralph.json
 
 ```json
 {
-  "source": "[path/to/original-prd.md]",
-  "project": "[Project Name]",
-  "branchName": "ralph/[feature-name-kebab-case]",
+  "source": "ralph/auth/README.md",
+  "project": "[Project Name from PRD]",
+  "branchName": "ralph/[feature-kebab-case]",
   "description": "[Feature description from PRD title/intro]",
   "userStories": [
     {
       "id": "US-001",
       "title": "[Story title]",
+      "source": "ralph/auth/database.md",
       "description": "As a [user], I want [feature] so that [benefit]",
       "acceptanceCriteria": [
         "Criterion 1",
@@ -41,187 +148,146 @@ Take a PRD (markdown file or text from any path) and convert it to `./prd.json` 
 }
 ```
 
----
-
-## Story Size: The Number One Rule
-
-**Each story must be completable in ONE Ralph iteration (one context window).**
-
-Ralph spawns a fresh Amp instance per iteration with no memory of previous work. If a story is too big, the LLM runs out of context before finishing and produces broken code.
-
-### Right-sized stories:
-- Add a database column and migration
-- Add a UI component to an existing page
-- Update a server action with new logic
-- Add a filter dropdown to a list
-
-### Too big (split these):
-- "Build the entire dashboard" - Split into: schema, queries, UI components, filters
-- "Add authentication" - Split into: schema, middleware, login UI, session handling
-- "Refactor the API" - Split into one story per endpoint or pattern
-
-**Rule of thumb:** If you cannot describe the change in 2-3 sentences, it is too big.
+**Field rules:**
+- `source` (root level): Always present, points to `ralph/[feature]/README.md`
+- `source` (story level): Optional, only present if PRD was split
+- All paths relative to project root
+- Story priority based on dependency order
 
 ---
 
-## Story Ordering: Dependencies First
+## Output Format: progress.txt
 
-Stories execute in priority order. Earlier stories must not depend on later ones.
+Initialize with this header:
 
-**Correct order:**
-1. Schema/database changes (migrations)
-2. Server actions / backend logic
-3. UI components that use the backend
-4. Dashboard/summary views that aggregate data
+```
+# Ralph Progress Log
+Started: [YYYY-MM-DD HH:MM]
+Source PRD: ralph/auth/README.md
+---
 
-**Wrong order:**
-1. UI component (depends on schema that does not exist yet)
-2. Schema change
+## Codebase Patterns
+(Agents will populate this section with reusable learnings)
+
+## Iteration History
+```
 
 ---
 
-## Acceptance Criteria: Must Be Verifiable
+## Handling Existing Directories
 
-Each criterion must be something Ralph can CHECK, not something vague.
+Before creating `ralph/auth/`, check if it exists:
 
-### Good criteria (verifiable):
-- "Add `status` column to tasks table with default 'pending'"
-- "Filter dropdown has options: All, Active, Completed"
-- "Clicking delete shows confirmation dialog"
-- "Typecheck passes"
-- "Tests pass"
-
-### Bad criteria (vague):
-- "Works correctly"
-- "User can do X easily"
-- "Good UX"
-- "Handles edge cases"
-
-### Always include as final criterion:
+```bash
+if [ -d "ralph/auth" ]; then
+  # Ask user what to do
+  echo "ralph/auth/ already exists. Options:"
+  echo "1. Overwrite (delete and recreate)"
+  echo "2. Create ralph/auth-2/ instead"
+  echo "3. Cancel"
+  # Wait for user input
+fi
 ```
-"Typecheck passes"
-```
-
-For stories with testable logic, also include:
-```
-"Tests pass"
-```
-
-### For stories that change UI, also include:
-```
-"Verify in browser using dev-browser skill"
-```
-
-Frontend stories are NOT complete until visually verified. Ralph will use the dev-browser skill to navigate to the page, interact with the UI, and confirm changes work.
 
 ---
 
-## Conversion Rules
+## Complete Examples
 
-1. **Each user story becomes one JSON entry**
-2. **IDs**: Sequential (US-001, US-002, etc.)
-3. **Priority**: Based on dependency order, then document order
-4. **All stories**: `passes: false` and empty `notes`
-5. **branchName**: Derive from feature name, kebab-case, prefixed with `ralph/`
-6. **Always add**: "Typecheck passes" to every story's acceptance criteria
+### Example 1: Small PRD (No Split)
 
----
+**Input:** `plans/bugfix.md` (100 lines, ~400 tokens)
 
-## Splitting Large PRDs
-
-If a PRD has big features, split them:
-
-**Original:**
-> "Add user notification system"
-
-**Split into:**
-1. US-001: Add notifications table to database
-2. US-002: Create notification service for sending notifications
-3. US-003: Add notification bell icon to header
-4. US-004: Create notification dropdown panel
-5. US-005: Add mark-as-read functionality
-6. US-006: Add notification preferences page
-
-Each is one focused change that can be completed and verified independently.
-
----
-
-## Example
-
-**Input PRD:**
-```markdown
-# Task Status Feature
-
-Add ability to mark tasks with different statuses.
-
-## Requirements
-- Toggle between pending/in-progress/done on task list
-- Filter list by status
-- Show status badge on each task
-- Persist status in database
+**Output:** `ralph/bugfix/`
+```
+ralph/bugfix/
+├── README.md          # Copy of plans/bugfix.md
+├── ralph.json         # No story-level source fields
+└── progress.txt       # Initialized header
 ```
 
-**Output prd.json:**
+**ralph.json:**
 ```json
 {
-  "source": "docs/task-status-prd.md",
-  "project": "TaskApp",
-  "branchName": "ralph/task-status",
-  "description": "Task Status Feature - Track task progress with status indicators",
+  "source": "ralph/bugfix/README.md",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Add status field to tasks table",
-      "description": "As a developer, I need to store task status in the database.",
-      "acceptanceCriteria": [
-        "Add status column: 'pending' | 'in_progress' | 'done' (default 'pending')",
-        "Generate and run migration successfully",
-        "Typecheck passes"
-      ],
+      "title": "Fix button color",
+      "description": "...",
+      "acceptanceCriteria": ["..."],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
+```
+
+### Example 2: Large PRD (Split)
+
+**Input:** `plans/auth.md` (500 lines, ~2000 tokens)
+
+**Analysis:** 7 user stories grouped into 3 domains
+
+**Output:** `ralph/auth/`
+```
+ralph/auth/
+├── README.md          # High-level overview
+├── ralph.json         # Story sources point to domains
+├── progress.txt       # Initialized
+├── database.md        # US-001, US-002
+├── ui-components.md   # US-003, US-004, US-005
+└── api-endpoints.md   # US-006, US-007
+```
+
+**README.md:**
+```markdown
+# User Authentication System
+
+## Overview
+Complete email/password authentication with JWT sessions.
+
+## Architecture
+- Database: PostgreSQL + Drizzle ORM
+- Backend: JWT tokens in httpOnly cookies
+- Frontend: React with Nuxt UI components
+
+## Implementation Domains
+
+This feature is organized into 3 domains:
+
+1. **Database** (US-001, US-002) - User schema, sessions table
+2. **UI Components** (US-003-005) - Login form, signup form, session display
+3. **API Endpoints** (US-006, US-007) - Auth routes, middleware
+
+See domain-specific files for detailed requirements.
+```
+
+**ralph.json:**
+```json
+{
+  "source": "ralph/auth/README.md",
+  "project": "MyApp",
+  "branchName": "ralph/auth",
+  "description": "User Authentication System",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Create users table",
+      "source": "ralph/auth/database.md",
+      "description": "...",
+      "acceptanceCriteria": ["..."],
       "priority": 1,
       "passes": false,
       "notes": ""
     },
     {
-      "id": "US-002",
-      "title": "Display status badge on task cards",
-      "description": "As a user, I want to see task status at a glance.",
-      "acceptanceCriteria": [
-        "Each task card shows colored status badge",
-        "Badge colors: gray=pending, blue=in_progress, green=done",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 2,
-      "passes": false,
-      "notes": ""
-    },
-    {
       "id": "US-003",
-      "title": "Add status toggle to task list rows",
-      "description": "As a user, I want to change task status directly from the list.",
-      "acceptanceCriteria": [
-        "Each row has status dropdown or toggle",
-        "Changing status saves immediately",
-        "UI updates without page refresh",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
+      "title": "Create login form",
+      "source": "ralph/auth/ui-components.md",
+      "description": "...",
+      "acceptanceCriteria": ["..."],
       "priority": 3,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-004",
-      "title": "Filter tasks by status",
-      "description": "As a user, I want to filter the list to see only certain statuses.",
-      "acceptanceCriteria": [
-        "Filter dropdown: All | Pending | In Progress | Done",
-        "Filter persists in URL params",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 4,
       "passes": false,
       "notes": ""
     }
@@ -231,29 +297,15 @@ Add ability to mark tasks with different statuses.
 
 ---
 
-## Archiving Previous Runs
-
-**Before writing a new prd.json, check if there is an existing one from a different feature:**
-
-1. Read the current `prd.json` if it exists
-2. Check if `branchName` differs from the new feature's branch name
-3. If different AND `progress.txt` has content beyond the header:
-   - Create archive folder: `archive/YYYY-MM-DD-feature-name/`
-   - Copy current `prd.json` and `progress.txt` to archive
-   - Reset `progress.txt` with fresh header
-
-**The ralph.sh script handles this automatically** when you run it, but if you are manually updating prd.json between runs, archive first.
-
----
-
 ## Checklist Before Saving
 
-Before writing prd.json, verify:
-
-- [ ] **Previous run archived** (if prd.json exists with different branchName, archive it first)
-- [ ] Each story is completable in one iteration (small enough)
-- [ ] Stories are ordered by dependency (schema to backend to UI)
-- [ ] Every story has "Typecheck passes" as criterion
-- [ ] UI stories have "Verify in browser using dev-browser skill" as criterion
-- [ ] Acceptance criteria are verifiable (not vague)
-- [ ] No story depends on a later story
+- [ ] Source file basename used for directory name
+- [ ] Checked for existing ralph/[feature]/ directory
+- [ ] Token count calculated (chars / 4)
+- [ ] Split decision made based on size
+- [ ] If split: All stories assigned to domains
+- [ ] If split: README.md has high-level overview
+- [ ] ralph.json source paths relative to project root
+- [ ] progress.txt initialized with header
+- [ ] All user stories have verifiable acceptance criteria
+- [ ] Stories ordered by dependency (schema -> backend -> UI)

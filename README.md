@@ -2,11 +2,61 @@
 
 ![Ralph](ralph.webp)
 
-Ralph is an autonomous AI agent loop that runs AI coding tools ([Amp](https://ampcode.com) by default) repeatedly until all PRD items are complete. Each iteration is a fresh instance of the agent with clean context to prevent context rot. Memory persists via git history, `progress.txt`, and `prd.json`.
+Ralph is an autonomous AI agent loop that runs AI coding tools ([Amp](https://ampcode.com) by default) repeatedly until all PRD items are complete. Each iteration is a fresh instance of the agent with clean context to prevent context rot. Memory persists via git history, `progress.txt`, and `ralph.json`.
 
 Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
 
 [Read my in-depth article on how I use Ralph](https://x.com/ryancarson/status/2008548371712135632)
+
+## Quick Start
+
+1. **Create a PRD** using the `prd` skill:
+   ```
+   > Use the prd skill to create a PRD for user authentication
+   ```
+   This creates `plans/auth.md`
+
+2. **Convert to Ralph format** using the `ralph` skill:
+   ```
+   > Use the ralph skill to convert plans/auth.md
+   ```
+   This creates `ralph/auth/ralph.json` and associated files
+
+3. **Run Ralph:**
+   ```bash
+   ./ralph.sh ralph/auth
+   ```
+   Or just `./ralph.sh` for interactive chooser
+
+4. **Monitor progress:**
+   ```bash
+   # See what Ralph will work on next
+   ./ralph.sh ralph/auth --next-prompt
+   
+   # Check completion status
+   jq '[.userStories[] | select(.passes == false)] | length' ralph/auth/ralph.json
+   ```
+
+## Directory Structure
+
+```
+project-root/
+├── plans/                      # Your PRDs (created by prd skill)
+│   ├── auth.md
+│   └── dashboard.md
+│
+├── ralph/                      # Auto-generated execution directories
+│   ├── auth/
+│   │   ├── README.md          # Primary plan
+│   │   ├── ralph.json         # Execution config with user stories
+│   │   ├── progress.txt       # Iteration log with learnings
+│   │   └── [domain].md        # Domain-specific plans (if split)
+│   │
+│   └── archive/               # Completed runs
+│       └── 2026-01-14-auth/
+│
+└── ralph.sh                    # Main script
+```
 
 ## Prerequisites
 
@@ -95,43 +145,50 @@ Use the PRD skill to generate a detailed requirements document:
 Load the prd skill and create a PRD for [your feature description]
 ```
 
-Answer the clarifying questions. The skill saves output to `tasks/prd-[feature-name].md`.
+Answer the clarifying questions. The skill saves output to `plans/[feature-name].md`.
 
 ### 2. Convert PRD to Ralph format
 
-Use the Ralph skill to convert the markdown PRD to JSON:
+Use the Ralph skill to convert the markdown PRD to a Ralph execution directory:
 
 ```
-Load the ralph skill and convert tasks/prd-[feature-name].md to prd.json
+Load the ralph skill and convert plans/[feature-name].md
 ```
 
-This creates `prd.json` with user stories structured for autonomous execution.
+This creates `ralph/[feature-name]/` with:
+- `README.md` - Primary plan (copy of source or high-level overview if split)
+- `ralph.json` - User stories structured for autonomous execution
+- `progress.txt` - Iteration log initialized with header
+- `[domain].md` files - Domain-specific plans (only if PRD was large and split)
 
 ### 3. Run Ralph
 
 ```bash
-# If ralph.sh is in your PATH (recommended)
-ralph.sh [OPTIONS]
+# Interactive chooser (if multiple projects)
+./ralph.sh
 
-# If ralph.sh is in your project directory
-./scripts/ralph/ralph.sh [OPTIONS]
+# Run specific project
+./ralph.sh ralph/auth
 
-# Examples
-ralph.sh                           # Amp, default iterations
-ralph.sh --tool claude 20          # Claude Code, 20 iterations
-ralph.sh --tool opencode           # OpenCode, default iterations
-ralph.sh --custom-prompt ./my-prompt.md  # With custom prompt
+# With options
+./ralph.sh ralph/auth -n 10              # Max 10 iterations
+./ralph.sh ralph/auth --tool claude      # Use Claude Code
+./ralph.sh ralph/auth --tool opencode    # Use OpenCode
+./ralph.sh ralph/auth --next-prompt      # Debug: see prompt without running
+
+# Stop a running Ralph
+./ralph.sh --stop ralph/auth
 ```
 
 Run `ralph.sh --help` for all options.
 
 Ralph will:
-1. Create a feature branch (from PRD `branchName`)
+1. Create a feature branch (from `branchName` in ralph.json)
 2. Pick the highest priority story where `passes: false`
 3. Implement that single story
 4. Run quality checks (typecheck, tests)
 5. Commit if checks pass
-6. Update `prd.json` to mark story as `passes: true`
+6. Update `ralph.json` to mark story as `passes: true`
 7. Append learnings to `progress.txt`
 8. Repeat until all stories pass or max iterations reached
 
@@ -139,12 +196,13 @@ Ralph will:
 
 | File | Purpose |
 |------|---------|
-| `ralph.sh` | The bash loop that spawns fresh AI instances (supports `--tool amp`, `--tool claude`, or `--tool opencode`) |
-| `prd.json` | User stories with `passes` status (the task list) |
-| `prd.json.example` | Example PRD format for reference |
-| `progress.txt` | Append-only learnings for future iterations |
+| `ralph.sh` | The bash loop that spawns fresh AI instances |
+| `plans/` | Source PRDs (user-created, read-only by Ralph) |
+| `ralph/[feature]/` | Execution directories (auto-generated) |
+| `ralph/[feature]/ralph.json` | User stories with `passes` status (the task list) |
+| `ralph/[feature]/progress.txt` | Append-only learnings for future iterations |
 | `skills/prd/` | Skill for generating PRDs |
-| `skills/ralph/` | Skill for converting PRDs to JSON |
+| `skills/ralph/` | Skill for converting PRDs to execution directories |
 | `flowchart/` | Interactive visualization of how Ralph works |
 
 ## Flowchart
@@ -165,10 +223,18 @@ npm run dev
 
 ### Each Iteration = Fresh Context
 
-Each iteration spawns a **new AI instance** (Amp or Claude Code) with clean context. The only memory between iterations is:
+Each iteration spawns a **new AI instance** (Amp, Claude Code, or OpenCode) with clean context. The only memory between iterations is:
 - Git history (commits from previous iterations)
 - `progress.txt` (learnings and context)
-- `prd.json` (which stories are done)
+- `ralph.json` (which stories are done)
+
+### Token Efficiency
+
+Ralph is designed to minimize token usage per iteration:
+- Never read full `ralph.json` - use `jq` queries
+- Load only relevant sections of `progress.txt`
+- Story-specific domain files only loaded when needed
+- Expected overhead: ~1350-3000 tokens vs ~8000-15000 in naive approach
 
 ### Small Tasks
 
@@ -211,14 +277,21 @@ When all stories have `passes: true`, Ralph outputs `<promise>COMPLETE</promise>
 
 ## Debugging
 
+Use `--next-prompt` to see exactly what context Ralph loads:
+```bash
+./ralph.sh ralph/auth --next-prompt
+```
+
+This shows the full prompt, plan files, and progress context without invoking the LLM.
+
 Check current state:
 
 ```bash
 # See which stories are done
-cat prd.json | jq '.userStories[] | {id, title, passes}'
+jq '.userStories[] | {id, title, passes}' ralph/auth/ralph.json
 
 # See learnings from previous iterations
-cat progress.txt
+cat ralph/auth/progress.txt
 
 # Check git history
 git log --oneline -10
@@ -228,36 +301,32 @@ git log --oneline -10
 
 Ralph looks for prompts in this order:
 1. `--custom-prompt <file>` - Explicit flag takes highest priority
-2. `.agents/ralph.md` - Project-local template (if exists)
+2. `[ralph-dir]/.agents/ralph.md` - Project-local template (if exists)
 3. Embedded default prompt
 
 To customize for your project:
-1. Run `ralph.sh --eject-prompt` which will create `.agents/ralph.md`
+1. Run `ralph.sh --eject-prompt ralph/auth` which will create `ralph/auth/.agents/ralph.md`
 2. Modify it for your needs  
 3. Ralph will automatically use it
 
 ### Post-Completion Cleanup
 
-When all stories are complete, Ralph automatically removes working files in a final commit:
-- `prd.json` - The task list
-- `progress.txt` - The iteration log
-- `.last-branch` - Branch tracking file
-- The source PRD file (if specified in `prd.json`)
+When all stories are complete, Ralph automatically removes working files from git (but keeps them on disk) in a final commit.
 
 **This cleanup commit can be reverted:**
 ```bash
 # Undo the cleanup
 git revert HEAD
 
-# Recover just the source PRD
-git checkout HEAD~1 -- plans/my-feature.md
+# Recover the files
+git checkout HEAD~1 -- ralph/auth/
 ```
 
-**To disable cleanup:** Create a custom prompt template (`.agents/ralph.md`) without the cleanup instructions in the Stop Condition section.
+**To disable cleanup:** Create a custom prompt template without the cleanup instructions in the Stop Condition section.
 
 ## Archiving
 
-Ralph automatically archives previous runs when you start a new feature (different `branchName`). Archives are saved to `archive/YYYY-MM-DD-feature-name/`.
+Ralph automatically archives previous runs when you start a new feature (different `branchName`). Archives are saved to `ralph/archive/YYYY-MM-DD-feature-name/`.
 
 ## References
 
