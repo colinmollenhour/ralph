@@ -1549,15 +1549,19 @@ for i in $(seq 1 $MAX_ITERATIONS); do
                  -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
                  -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g" \
                  -e "s|\\\$LEARNINGS_FILE|$LEARNINGS_FILE|g" \
+                 -e "s|\\\$PRIMARY_PLAN_PATH|$PRIMARY_PLAN_PATH|g" \
+                 -e "s|\\\$STORY_PLAN_PATH|${STORY_PLAN_PATH:---none--}|g" \
                  -e "s|\\\$BRANCH_NAME|$BRANCH_NAME|g" \
                  -e "s|\\\$STORY_ID|$STORY_ID|g" \
                  -e "s|\\\$STORY_TITLE|$STORY_TITLE|g" \
                  "$CUSTOM_PROMPT")
   elif [[ -f "$RALPH_DIR/.agents/ralph.md" ]]; then
-    PROMPT=$(sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
+     PROMPT=$(sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
                  -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
                  -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g" \
                  -e "s|\\\$LEARNINGS_FILE|$LEARNINGS_FILE|g" \
+                 -e "s|\\\$PRIMARY_PLAN_PATH|$PRIMARY_PLAN_PATH|g" \
+                 -e "s|\\\$STORY_PLAN_PATH|${STORY_PLAN_PATH:---none--}|g" \
                  -e "s|\\\$BRANCH_NAME|$BRANCH_NAME|g" \
                  -e "s|\\\$STORY_ID|$STORY_ID|g" \
                  -e "s|\\\$STORY_TITLE|$STORY_TITLE|g" \
