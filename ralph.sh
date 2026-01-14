@@ -57,6 +57,17 @@ setup_colors() {
 # Initialize colors (may be called again after parsing --no-color flag)
 setup_colors
 
+# Cleanup function to reset terminal on exit
+cleanup_terminal() {
+  # Reset scrolling region if stderr is a TTY
+  if [[ -t 2 ]]; then
+    printf "\033[r" >&2
+  fi
+}
+
+# Set up trap to cleanup terminal on exit
+trap cleanup_terminal EXIT
+
 # =============================================================================
 # Help function
 # =============================================================================
@@ -907,7 +918,7 @@ monitor_process() {
   if ! kill -0 "$pid" 2>/dev/null; then
     return 0
   fi
-  
+
   while kill -0 "$pid" 2>/dev/null; do
     # Calculate elapsed time
     local elapsed=$(($(date +%s) - start_time))
@@ -936,8 +947,8 @@ monitor_process() {
     
     # Only update if changed (reduce flicker)
     if [[ "$status_line" != "$last_line" ]]; then
-      # Write directly to terminal (stderr) bypassing any output redirection
-      printf "\r\033[K%s" "$status_line" >&2
+      # Save cursor position, move to first line, write status, restore cursor
+      printf "\033[s\033[1;1H\033[K%s\033[u" "$status_line" >&2
       last_line="$status_line"
     fi
     
@@ -945,7 +956,7 @@ monitor_process() {
   done
   
   # Clear monitoring line when process ends
-  printf "\r\033[K" >&2
+  printf "\033[s\033[1;1H\033[K\033[u" >&2
 }
 
 # Display final wall time summary
@@ -1224,6 +1235,12 @@ fi
 # Check for project-local prompt template and show message once
 if [[ -z "$CUSTOM_PROMPT" ]] && [[ -f "$RALPH_DIR/.agents/ralph.md" ]]; then
   echo -e "${CYAN}${E_FILE} Using project-local prompt:${NC} $RALPH_DIR/.agents/ralph.md"
+fi
+
+# Set up scrolling region for monitor (reserve line 1 for status bar)
+if [[ -t 2 ]]; then
+  TERM_HEIGHT=$(tput lines 2>/dev/null || echo 24)
+  printf "\033[2J\033[H\033[2;%dr\033[2;1H" "$TERM_HEIGHT" >&2
 fi
 
 echo ""
