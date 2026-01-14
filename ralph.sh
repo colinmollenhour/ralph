@@ -874,6 +874,89 @@ EOF
   fi
 }
 
+# Format seconds to human-readable time (e.g., "2m 15s", "1h 5m 32s")
+# Args: seconds
+format_time() {
+  local total_seconds=$1
+  local hours=$((total_seconds / 3600))
+  local minutes=$(( (total_seconds % 3600) / 60 ))
+  local seconds=$((total_seconds % 60))
+  
+  if [[ $hours -gt 0 ]]; then
+    echo "${hours}h ${minutes}m ${seconds}s"
+  elif [[ $minutes -gt 0 ]]; then
+    echo "${minutes}m ${seconds}s"
+  else
+    echo "${seconds}s"
+  fi
+}
+
+# Monitor a process and display real-time stats
+# Args: PID, START_TIME
+monitor_process() {
+  local pid=$1
+  local start_time=$2
+  local last_line=""
+  
+  # Skip monitoring if stderr is not a TTY (e.g., piped to file)
+  if [[ ! -t 2 ]]; then
+    return 0
+  fi
+  
+  # Check if process exists before starting monitoring
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+  
+  while kill -0 "$pid" 2>/dev/null; do
+    # Calculate elapsed time
+    local elapsed=$(($(date +%s) - start_time))
+    local elapsed_str=$(format_time $elapsed)
+    
+    # Get CPU usage via ps
+    local cpu=$(ps -p "$pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "0")
+    
+    # Get memory usage (RSS in MB)
+    local mem_kb=$(ps -p "$pid" -o rss= 2>/dev/null | tr -d ' ' || echo "0")
+    local mem_mb=$((mem_kb / 1024))
+    
+    # Get LISTENING ports only (not client connections)
+    local ports=""
+    if command -v ss &>/dev/null; then
+      # Use ss to get listening ports for this PID
+      ports=$(ss -ltnp 2>/dev/null | grep "pid=$pid," | awk '{print $4}' | sed 's/.*://' | sort -u | tr '\n' ',' | sed 's/,$//')
+    elif command -v netstat &>/dev/null; then
+      # Fallback to netstat
+      ports=$(netstat -ltnp 2>/dev/null | grep "$pid/" | awk '{print $4}' | sed 's/.*://' | sort -u | tr '\n' ',' | sed 's/,$//')
+    fi
+    [[ -z "$ports" ]] && ports="none"
+    
+    # Build status line with elapsed time (no colors for cleaner display)
+    local status_line="[Monitor] PID: ${pid} | Elapsed: ${elapsed_str} | CPU: ${cpu}% | MEM: ${mem_mb}MB | Ports: ${ports}"
+    
+    # Only update if changed (reduce flicker)
+    if [[ "$status_line" != "$last_line" ]]; then
+      # Write directly to terminal (stderr) bypassing any output redirection
+      printf "\r\033[K%s" "$status_line" >&2
+      last_line="$status_line"
+    fi
+    
+    sleep 1
+  done
+  
+  # Clear monitoring line when process ends
+  printf "\r\033[K" >&2
+}
+
+# Display final wall time summary
+# Args: none (uses global RALPH_START_TIME)
+show_final_wall_time() {
+  local ralph_end_time=$(date +%s)
+  local total_wall_time=$((ralph_end_time - RALPH_START_TIME))
+  local wall_time_str=$(format_time $total_wall_time)
+  echo -e "${DIM}Total wall time: ${wall_time_str}${NC}"
+}
+
 # Actually setup worktree now that functions are defined
 if [[ "$WORKTREE_FLAG" == true ]]; then
   setup_worktree "$ORIG_RALPH_DIR" "$ORIG_RALPH_JSON"
@@ -1079,28 +1162,62 @@ if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
     exit 1
   fi
   
+  # Initialize wall time tracking
+  RALPH_START_TIME=$(date +%s)
+  
   CODEBASE_PATTERNS=$(cat "$LEARNINGS_FILE")
   PROMPT=$(generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS")
   
   echo -e "${CYAN}${E_BOOK} Running learn-only prompt...${NC}"
   
-  # Run the tool with learn prompt
+  # Record start time
+  LEARN_START=$(date +%s)
+  
+  # Create temp file for output capture
+  TEMP_OUTPUT=$(mktemp)
+  
+  # Run the tool with learn prompt (redirect output to file)
   if [[ "$TOOL" == "amp" ]]; then
-    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+    echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
+    TOOL_PID=$!
   elif [[ "$TOOL" == "claude" ]]; then
-    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+    echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
+    TOOL_PID=$!
   else
     if ((${#TOOL_ARGS[@]})); then
-      OUTPUT=$("$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+      "$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
     else
-      OUTPUT=$("$TOOL_CMD" run "$PROMPT" 2>&1 | tee /dev/stderr) || true
+      "$TOOL_CMD" run "$PROMPT" > "$TEMP_OUTPUT" 2>&1 &
     fi
+    TOOL_PID=$!
   fi
+  
+  # Stream output file to terminal using tail -f
+  tail -f "$TEMP_OUTPUT" 2>/dev/null &
+  TAIL_PID=$!
+  
+  # Start monitoring in background
+  monitor_process "$TOOL_PID" "$LEARN_START" &
+  MONITOR_PID=$!
+  
+  # Wait for tool to complete
+  wait "$TOOL_PID" || true
+  
+  # Stop tail and monitoring
+  kill "$TAIL_PID" 2>/dev/null || true
+  wait "$TAIL_PID" 2>/dev/null || true
+  kill "$MONITOR_PID" 2>/dev/null || true
+  wait "$MONITOR_PID" 2>/dev/null || true
+  
+  # Read output from temp file
+  OUTPUT=$(cat "$TEMP_OUTPUT")
+  rm -f "$TEMP_OUTPUT"
   
   if echo "$OUTPUT" | grep -q "<promise>COMPLETE</promise>"; then
     echo ""
     echo -e "${GREEN}${E_SPARKLE} Learnings absorbed successfully!${NC}"
   fi
+  show_final_wall_time
   exit 0
 fi
 
@@ -1127,11 +1244,16 @@ CONSECUTIVE_FAILURES=0
 MAX_FAILURES=5
 MIN_ITERATION_TIME=4  # seconds - iterations faster than this are considered failures
 
+# Wall time tracking
+RALPH_START_TIME=$(date +%s)
+TOTAL_ITERATION_TIME=0
+
 for i in $(seq 1 $MAX_ITERATIONS); do
   # Check for stop signal
   if [ -f "$STOP_FILE" ]; then
     echo ""
     echo -e "${YELLOW}${E_STOP} Stop signal detected. Stopping gracefully...${NC}"
+    show_final_wall_time
     rm -f "$STOP_FILE"
     exit 2
   fi
@@ -1147,17 +1269,48 @@ for i in $(seq 1 $MAX_ITERATIONS); do
         CODEBASE_PATTERNS=$(cat "$LEARNINGS_FILE")
         PROMPT=$(generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS")
         
+        # Record start time
+        LEARN_START=$(date +%s)
+        
+        # Create temp file for output capture
+        TEMP_OUTPUT=$(mktemp)
+        
+        # Run the tool with learn prompt (redirect output to file)
         if [[ "$TOOL" == "amp" ]]; then
-          OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+          echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
+          TOOL_PID=$!
         elif [[ "$TOOL" == "claude" ]]; then
-          OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+          echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
+          TOOL_PID=$!
         else
           if ((${#TOOL_ARGS[@]})); then
-            OUTPUT=$("$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+            "$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
           else
-            OUTPUT=$("$TOOL_CMD" run "$PROMPT" 2>&1 | tee /dev/stderr) || true
+            "$TOOL_CMD" run "$PROMPT" > "$TEMP_OUTPUT" 2>&1 &
           fi
+          TOOL_PID=$!
         fi
+        
+        # Stream output file to terminal using tail -f
+        tail -f "$TEMP_OUTPUT" 2>/dev/null &
+        TAIL_PID=$!
+        
+        # Start monitoring in background
+        monitor_process "$TOOL_PID" "$LEARN_START" &
+        MONITOR_PID=$!
+        
+        # Wait for tool to complete
+        wait "$TOOL_PID" || true
+        
+        # Stop tail and monitoring
+        kill "$TAIL_PID" 2>/dev/null || true
+        wait "$TAIL_PID" 2>/dev/null || true
+        kill "$MONITOR_PID" 2>/dev/null || true
+        wait "$MONITOR_PID" 2>/dev/null || true
+        
+        # Read output from temp file
+        OUTPUT=$(cat "$TEMP_OUTPUT")
+        rm -f "$TEMP_OUTPUT"
         
         echo ""
         echo -e "${GREEN}${E_SPARKLE} Learnings absorbed!${NC}"
@@ -1165,6 +1318,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     fi
     echo ""
     echo -e "${GREEN}${E_PARTY} Ralph already completed! All stories pass.${NC}"
+    show_final_wall_time
     exit 0
   fi
 
@@ -1222,20 +1376,47 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   # Record start time for failure detection
   ITERATION_START=$(date +%s)
 
-  # Run the selected tool with the ralph prompt
+  # Create temp file for output capture
+  TEMP_OUTPUT=$(mktemp)
+
+  # Run the selected tool with the ralph prompt (redirect output to file)
   if [[ "$TOOL" == "amp" ]]; then
-    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+    echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
+    TOOL_PID=$!
   elif [[ "$TOOL" == "claude" ]]; then
     # Claude Code: use --dangerously-skip-permissions for autonomous operation, --print for output
-    OUTPUT=$(echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+    echo "$PROMPT" | "$TOOL_CMD" --dangerously-skip-permissions --print "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
+    TOOL_PID=$!
   else
     # OpenCode: use run command for non-interactive mode
     if ((${#TOOL_ARGS[@]})); then
-      OUTPUT=$("$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+      "$TOOL_CMD" run "$PROMPT" "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
     else
-      OUTPUT=$("$TOOL_CMD" run "$PROMPT" 2>&1 | tee /dev/stderr) || true
+      "$TOOL_CMD" run "$PROMPT" > "$TEMP_OUTPUT" 2>&1 &
     fi
+    TOOL_PID=$!
   fi
+
+  # Stream output file to terminal using tail -f
+  tail -f "$TEMP_OUTPUT" 2>/dev/null &
+  TAIL_PID=$!
+
+  # Start monitoring in background
+  monitor_process "$TOOL_PID" "$ITERATION_START" &
+  MONITOR_PID=$!
+
+  # Wait for tool to complete
+  wait "$TOOL_PID" || true
+
+  # Stop tail and monitoring
+  kill "$TAIL_PID" 2>/dev/null || true
+  wait "$TAIL_PID" 2>/dev/null || true
+  kill "$MONITOR_PID" 2>/dev/null || true
+  wait "$MONITOR_PID" 2>/dev/null || true
+
+  # Read output from temp file
+  OUTPUT=$(cat "$TEMP_OUTPUT")
+  rm -f "$TEMP_OUTPUT"
   
   # Calculate iteration duration
   ITERATION_END=$(date +%s)
@@ -1246,6 +1427,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     echo ""
     echo -e "${GREEN}${E_FINISH} Ralph completed all tasks!${NC}"
     echo -e "${DIM}Completed at iteration $i of $MAX_ITERATIONS${NC}"
+    show_final_wall_time
     echo ""
     echo -e "${DIM}Working files have been cleaned up in a separate commit.${NC}"
     echo -e "${DIM}To undo cleanup: git revert HEAD${NC}"
@@ -1265,6 +1447,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
       echo -e "${RED}${E_ERROR} Error: Too many consecutive quick failures ($MAX_FAILURES).${NC}"
       echo -e "${RED}This usually indicates a configuration problem (e.g., invalid model, missing permissions).${NC}"
       echo "Please check the error messages above and fix the issue before retrying."
+      show_final_wall_time
       exit 1
     fi
     
@@ -1273,7 +1456,10 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   else
     # Reset failure counter on successful iteration
     CONSECUTIVE_FAILURES=0
-    echo -e "${GREEN}${E_CHECK} Iteration $i complete.${NC} Continuing..."
+    TOTAL_ITERATION_TIME=$((TOTAL_ITERATION_TIME + ITERATION_DURATION))
+    iteration_time_str=$(format_time $ITERATION_DURATION)
+    total_time_str=$(format_time $TOTAL_ITERATION_TIME)
+    echo -e "${GREEN}${E_CHECK} Iteration $i complete.${NC} Time: ${iteration_time_str} | Total: ${total_time_str}"
     sleep 2
   fi
 done
@@ -1281,4 +1467,5 @@ done
 echo ""
 echo -e "${YELLOW}${E_CLOCK}Ralph reached max iterations ($MAX_ITERATIONS) without completing all tasks.${NC}"
 echo "Check $PROGRESS_FILE for status."
+show_final_wall_time
 exit 1
