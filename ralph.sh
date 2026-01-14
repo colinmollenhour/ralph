@@ -653,10 +653,13 @@ PROMPT_HEADER
 4. **Complete the story** - Do ALL of the following before committing:
    a. Update ralph.json to mark story complete
    b. Append progress entry to progress.txt
-   c. Record learnings (if any) to AGENTS.md
+PROMPT_INSTRUCTIONS
+
+  echo "   c. Record learnings (if any) to \`$learnings_file\`"
+  cat << 'PROMPT_INSTRUCTIONS_CONT'
    d. Stage ALL changes (implementation + bookkeeping files)
    e. Commit with message starting:
-PROMPT_INSTRUCTIONS
+PROMPT_INSTRUCTIONS_CONT
 
   echo "      \`feat: $story_id - $story_title\`"
   cat << 'PROMPT_INSTRUCTIONS2'
@@ -842,7 +845,7 @@ jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSO
 4. **Complete the story** - Do ALL of the following before committing:
    a. Update ralph.json to mark story complete
    b. Append progress entry to progress.txt
-   c. Record learnings (if any) to AGENTS.md
+   c. Record learnings (if any) to `$LEARNINGS_FILE`
    d. Stage ALL changes (implementation + bookkeeping files)
    e. Commit with message starting: `feat: $STORY_ID - $STORY_TITLE`
    
