@@ -669,25 +669,23 @@ PROMPT_INSTRUCTIONS2
   echo "   # a. Mark story complete"
   echo "   $update_story_cmd"
   echo ""
-  echo "   # b. Append progress (edit $progress_file):"
-  cat << PROGRESS_FORMAT
-   # ### [YYYY-MM-DD HH:MM] - $story_id
-PROGRESS_FORMAT
-
-  # Thread URL instruction (only for Amp)
+  echo "   # b. Append progress"
+  echo "   cat >> \"$progress_file\" << 'PROGRESS_ENTRY'"
+  echo "   ### [\$(date '+%Y-%m-%d %H:%M')] - $story_id"
+  
+  # Thread URL line (only for Amp)
   if [[ "$tool" == "amp" ]]; then
-    echo '   # Thread: https://ampcode.com/threads/$AMP_CURRENT_THREAD_ID'
+    echo "   Thread: https://ampcode.com/threads/\$AMP_CURRENT_THREAD_ID"
   fi
-
-  cat << 'PROGRESS_FORMAT2'
-   # Implemented: [1-2 sentence summary]
-   # Files changed:
-   # - path/to/file.ts (created/modified/deleted)
-   # ---
-   
-   # c. Stage everything and commit
-   git add -A
-PROGRESS_FORMAT2
+  
+  echo "   Implemented: [1-2 sentence summary]"
+  echo "   Files changed:"
+  echo "   - path/to/file.ts (created/modified/deleted)"
+  echo "   ---"
+  echo "   PROGRESS_ENTRY"
+  echo ""
+  echo "   # c. Stage everything and commit"
+  echo "   git add -A"
   echo "   git commit -m \"feat: $story_id - $story_title\""
   echo "   \`\`\`"
 
@@ -851,12 +849,14 @@ jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSO
    # a. Mark story complete
    jq '(.userStories[] | select(.id == "'"$STORY_ID"'") | .passes) = true' "$RALPH_JSON" > "$RALPH_JSON.tmp" && mv "$RALPH_JSON.tmp" "$RALPH_JSON"
    
-   # b. Append progress (edit $PROGRESS_FILE):
-   # ### [YYYY-MM-DD HH:MM] - $STORY_ID
-   # Implemented: [1-2 sentence summary]
-   # Files changed:
-   # - path/to/file.ts (created/modified/deleted)
-   # ---
+   # b. Append progress
+   cat >> "$PROGRESS_FILE" << 'PROGRESS_ENTRY'
+   ### [$(date '+%Y-%m-%d %H:%M')] - $STORY_ID
+   Implemented: [1-2 sentence summary]
+   Files changed:
+   - path/to/file.ts (created/modified/deleted)
+   ---
+   PROGRESS_ENTRY
    
    # c. Stage everything and commit
    git add -A
