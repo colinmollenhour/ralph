@@ -658,7 +658,8 @@ PROMPT_INSTRUCTIONS
   echo "   c. Record learnings (if any) to \`$learnings_file\`"
   cat << 'PROMPT_INSTRUCTIONS_CONT'
    d. Stage ALL changes (implementation + bookkeeping files)
-   e. Commit with message starting:
+
+5. **Commit** with message starting:
 PROMPT_INSTRUCTIONS_CONT
 
   echo "      \`feat: $story_id - $story_title\`"
@@ -666,7 +667,7 @@ PROMPT_INSTRUCTIONS_CONT
    
    This atomic commit ensures bookkeeping is never forgotten.
    
-   Commands:
+Commands:
 PROMPT_INSTRUCTIONS2
 
   echo "   \`\`\`bash"
@@ -689,11 +690,7 @@ PROMPT_INSTRUCTIONS2
   echo "   PROGRESS_ENTRY"
   echo ""
   echo "   # c. Record learnings (if any patterns/gotchas discovered)"
-  echo "   echo '- [Your learning here]' >> \"$learnings_file\""
-  echo ""
-  echo "   # d. Stage everything and commit"
-  echo "   git add -A"
-  echo "   git commit -m \"feat: $story_id - $story_title\""
+  echo "   echo '[Your learning here]' >> \"$learnings_file\""
   echo "   \`\`\`"
 
   echo ""
@@ -830,6 +827,7 @@ jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSO
 
 ### Context Files
 - Primary plan: `$PRIMARY_PLAN_PATH`
+- Story details: `$STORY_PLAN_PATH`
 - Learnings: `$LEARNINGS_FILE`
 
 ---
@@ -847,11 +845,12 @@ jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSO
    b. Append progress entry to progress.txt
    c. Record learnings (if any) to `$LEARNINGS_FILE`
    d. Stage ALL changes (implementation + bookkeeping files)
-   e. Commit with message starting: `feat: $STORY_ID - $STORY_TITLE`
+
+5. **Commit** with message starting: `feat: $STORY_ID - $STORY_TITLE`
    
    This atomic commit ensures bookkeeping is never forgotten.
    
-   Commands:
+Commands:
    ```bash
    # a. Mark story complete
    jq '(.userStories[] | select(.id == "'\"$STORY_ID\"'") | .passes) = true' "$RALPH_JSON" > "$RALPH_JSON.tmp" && mv "$RALPH_JSON.tmp" "$RALPH_JSON"
@@ -866,11 +865,7 @@ jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSO
    PROGRESS_ENTRY
    
    # c. Record learnings (if any patterns/gotchas discovered)
-   echo '- [Your learning here]' >> "$LEARNINGS_FILE"
-   
-   # d. Stage everything and commit
-   git add -A
-   git commit -m "feat: $STORY_ID - $STORY_TITLE"
+   echo '[Your learning here]' >> "$LEARNINGS_FILE"
    ```
 
 ## Stop Condition
@@ -944,7 +939,6 @@ ensure_learnings_file() {
     cat > "$LEARNINGS_FILE" << EOF
 # $FEATURE_NAME - Learnings
 
-(Learnings will be added here as you work on the feature)
 EOF
   fi
 }
@@ -1384,8 +1378,10 @@ echo ""
 echo -e "${CYAN}${E_ROCKET} Starting Ralph${NC}"
 echo -e "   ${DIM}Project:${NC}        ${ORIG_RALPH_DIR:-$RALPH_DIR}"
 
-# Start OpenCode server if using opencode
-start_opencode_server
+# Start OpenCode server if using opencode (but NOT if worktree mode - will start later)
+if [[ "$WORKTREE_FLAG" != true ]]; then
+  start_opencode_server
+fi
 
 # Display tool info
 if [[ "$TOOL" == "opencode" ]] && [[ -n "$OPENCODE_PORT" ]]; then
@@ -1434,6 +1430,12 @@ for i in $(seq 1 $MAX_ITERATIONS); do
       echo -e "${RED}${E_ERROR} Failed to cd back to worktree: $WORKTREE_DIR${NC}"
       exit 1
     }
+
+    # Start OpenCode server NOW (after cd) so it inherits correct working directory
+    # Only starts if not already started (start_opencode_server checks OPENCODE_SERVER_PID)
+    if [[ "$TOOL" == "opencode" ]] && [[ -z "$OPENCODE_SERVER_PID" ]]; then
+      start_opencode_server
+    fi
   fi
 
   # Check for stop signal
