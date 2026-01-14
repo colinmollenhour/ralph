@@ -11,12 +11,12 @@ Create detailed Product Requirements Documents that are clear, actionable, and s
 
 ## The Job
 
-1. Receive a feature description from the user
-2. Ask 3-5 essential clarifying questions (with lettered options)
-3. Generate a structured PRD based on answers
-4. Save to `plans/[feature-name].md`
+1. Receive a feature description from the user either as a file or set of files, or the current context if a new feature was discussed
+2. Ask essential clarifying questions (with lettered options) if necessary
+3. Generate a structured PRD based on the feature description and answers
+4. Save to `plans/PRD-[Feature-Name].md`
 
-**Important:** Do NOT start implementing. Just create the PRD.
+**Important:** Do NOT start implementing or generating code block. Just focus on requirements and creating the PRD.
 
 ---
 
@@ -60,7 +60,7 @@ This lets users respond with "1A, 2C, 3B" for quick iteration.
 Generate the PRD with these sections:
 
 ### 1. Introduction/Overview
-Brief description of the feature and the problem it solves.
+Description of the feature and the problem it solves.
 
 ### 2. Goals
 Specific, measurable objectives (bullet list).
@@ -129,7 +129,7 @@ PRDs are read by AI agents on every iteration. Keep them concise:
 - **Target length:** < 300 lines or ~1200 tokens per logical domain
 
 The Ralph skill will automatically split large PRDs into domain files.
-Your job is just to write clear, concise requirements in `plans/`.
+Your job is just to convert the plan in clear, concise requirements.
 
 ---
 
@@ -149,7 +149,7 @@ The PRD reader may be a junior developer or AI agent. Therefore:
 
 - **Format:** Markdown (`.md`)
 - **Location:** `plans/`
-- **Filename:** `[feature-name].md` (kebab-case)
+- **Filename:** `PRD-[Feature-Name].md` (Screaming-Kebab-Case)
 
 ---
 

@@ -3,20 +3,19 @@ name: ralph
 description: "Convert PRDs to ralph.json format for the Ralph autonomous agent system. Use when you have an existing PRD and need to convert it to Ralph's JSON format. Triggers on: convert this prd, turn this into ralph format, create ralph.json from this, ralph json."
 ---
 
-# Ralph PRD Converter
-
-Converts PRDs from plans/ into self-contained Ralph execution directories.
+Convert the users plan into a self-contained Ralph execution directory.
 
 ---
 
 ## The Job
 
-1. Read the source PRD (e.g., `plans/auth.md`)
-2. Analyze size: count chars, divide by 4 for rough token estimate
-3. Decide: Split or keep as single file?
-   - If > 3500 tokens OR > 300 lines: Split into domains
-   - Otherwise: Single README.md (copy of source)
-4. Create directory: `ralph/[basename]/` (basename = source filename without .md)
+1. Read the plan source if specified, otherwise use the plans in the current context.
+2. Unless otherwise specific instructions are given on splitting, analyze the plan size to determine if splitting is needed.
+   - Count chars, divide by 4 for rough token estimate
+   - Decide: Split or keep as single file?
+     - If > 3500 tokens OR > 300 lines: Split the plan into the "Primary plan" (high-level) and multiple domains
+     - Otherwise: Copy or write the entire original plans as the "Primary plan"
+4. Create directory: `ralph/[basename]/` (basename = source filename without the "PRD-" prefix or ".md" extension - or generate a Screaming-Kebab-Case name for the feature if no file was provided)
 5. Write files:
    - `README.md` - Primary plan
    - `ralph.json` - Execution config
@@ -26,9 +25,10 @@ Converts PRDs from plans/ into self-contained Ralph execution directories.
 Note: `AGENTS.md` (learnings file) is created automatically by ralph.sh on first task execution.
 
 **Important:** 
-- Directory name comes from source basename: `plans/auth.md` -> `ralph/auth/`
-- If `ralph/auth/` already exists, ask user for instructions (overwrite/rename/cancel)
-- All paths in ralph.json are relative to project root
+- Directory name comes from source basename. E.g.: `plans/auth.md` -> `ralph/auth/`
+  - If using the current context instead of a file, come up with a reasonably short name.
+- If `ralph/auth/` already exists, ask the user for instructions (overwrite/rename/cancel).
+- All paths written to ralph.json are **relative to the project root**, not the created directory.
 
 ---
 
@@ -42,24 +42,21 @@ LINES=$(wc -l < plans/auth.md)
 
 # Decision logic
 if [[ $TOKENS -gt 3500 ]] || [[ $LINES -gt 300 ]]; then
-  SPLIT=true
+  echo "Do split"
 else
-  SPLIT=false
+  echo "Do NOT split"
 fi
 ```
 
 ### If NOT splitting:
-- Copy source PRD to `ralph/auth/README.md`:
-  ```bash
-  cp plans/auth.md ralph/auth/README.md
-  ```
+- Copy or dump the source plan to `ralph/auth/README.md`
 - No story-level `source` fields in ralph.json
-- Agents read README.md + story JSON only
+- Each agents iteration will read README.md + story JSON only
 
 ### If splitting:
 - Create high-level overview in `ralph/auth/README.md`
-- Create domain files: `ralph/auth/database.md`, etc.
-- Add `source` field to each story pointing to its domain file
+- Create detailed domain files: `ralph/auth/database.md`, etc.
+- Add `source` field to each story pointing to its domain file. The number of user stories is likely to be greater than the number of domains.
 
 ---
 
@@ -91,6 +88,8 @@ Group user stories by common domains using keyword matching:
 - Keywords: deploy, build, config, docker, CI, environment
 - Example: "Add deployment script", "Configure auth env vars"
 
+For extra large projects, it may make sense to have multiple domains. E.g. "Feature 1 UI" and "Feature 2 UI" if Feature 1 and 2 are fairly distinct.
+
 ### Splitting Strategy
 
 1. **Analyze all user stories** - Extract title + description
@@ -101,7 +100,7 @@ Group user stories by common domains using keyword matching:
 ### Creating Domain Files
 
 Each domain file should contain:
-- Domain-specific requirements extracted from PRD
+- Domain-specific requirements extracted from the project
 - Details relevant to that domain's stories
 - Technical notes, constraints, patterns for that domain
 
@@ -151,8 +150,8 @@ This domain covers:
 ```
 
 **Field rules:**
-- `source` (root level): Always present, points to `ralph/[feature]/README.md`
-- `source` (story level): Optional, only present if PRD was split
+- `source` (root level): Always present, points to the "Primary plan" (`ralph/[feature]/README.md`)
+- `source` (story level): Optional, only present if project was split
 - All paths relative to project root
 - Story priority based on dependency order
 
@@ -164,12 +163,10 @@ Initialize with this header:
 
 ```
 # Ralph Progress Log
-Started: [YYYY-MM-DD HH:MM]
-Source PRD: ralph/auth/README.md
+Created: `date`
+Source: (original plan file or ralph/auth/README.md if from context)
 ---
 ```
-
-Note: progress.txt is now a simple iteration history. Learnings are stored in `AGENTS.md` (created automatically by ralph.sh on first task execution).
 
 ---
 
@@ -192,7 +189,7 @@ fi
 
 ## Complete Examples
 
-### Example 1: Small PRD (No Split)
+### Example 1: Small project (No Split)
 
 **Input:** `plans/bugfix.md` (100 lines, ~400 tokens)
 
@@ -223,7 +220,7 @@ ralph/bugfix/
 }
 ```
 
-### Example 2: Large PRD (Split)
+### Example 2: Large project (Split)
 
 **Input:** `plans/auth.md` (500 lines, ~2000 tokens)
 

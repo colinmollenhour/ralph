@@ -573,6 +573,15 @@ setup_worktree() {
     echo -e "${RED}${E_ERROR} Failed to cd to worktree: $WORKTREE_DIR${NC}"
     exit 1
   }
+
+  # Update paths to be relative to the worktree working directory
+  RALPH_JSON="$rel_ralph_dir/ralph.json"
+  RALPH_DIR="$rel_ralph_dir"
+  PROGRESS_FILE="$RALPH_DIR/progress.txt"
+  LEARNINGS_FILE="$RALPH_DIR/AGENTS.md"
+  LAST_BRANCH_FILE="$RALPH_DIR/.last-branch"
+  STOP_FILE="$RALPH_DIR/.ralph-stop"
+  ARCHIVE_DIR="ralph/archive"
 }
 
 # Generate the prompt with pre-computed variables
