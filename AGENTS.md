@@ -32,6 +32,9 @@ Ralph is an autonomous AI agent loop that runs AI coding tools (Amp, Claude Code
 ./ralph.sh ralph/auth --learn           # Normal execution + learn on final iteration
 ./ralph.sh ralph/auth --learn-now       # Just run learn prompt, no tasks
 
+# Run in isolated git worktree
+./ralph.sh ralph/auth --worktree        # Creates .worktrees/auth/ and runs there
+
 # Run the flowchart dev server
 cd flowchart && npm run dev
 

@@ -83,6 +83,7 @@ OPTIONS:
   --stop                 Signal Ralph to stop before the next iteration
   --learn                Add learn section to prompt; runs learn-only if all stories complete
   --learn-now            Run only the learn prompt (absorb learnings into ./AGENTS.md)
+  --worktree             Run in a git worktree (creates .worktrees/<feature>/)
   --no-color             Disable colors and emojis (also respects NO_COLOR env var)
   --help, -h             Show this help message
   --                     Everything after -- is passed to the tool as additional arguments
@@ -111,6 +112,7 @@ EXAMPLES:
   ralph.sh --stop ralph/auth            # Stop a running Ralph project
   ralph.sh ralph/auth --learn           # Normal execution + learn on final iteration
   ralph.sh ralph/auth --learn-now       # Just run learn prompt, no tasks
+  ralph.sh ralph/auth --worktree        # Run in isolated git worktree
   ralph.sh --eject-prompt               # Create reusable prompt template
   ralph.sh --no-color ralph/auth        # Run without colors/emojis
 
@@ -159,6 +161,8 @@ NEXT_PROMPT_FLAG=false  # Debug mode
 LEARN_FLAG=false  # Flag for --learn
 LEARN_NOW_FLAG=false  # Flag for --learn-now
 STATUS_FLAG=false  # Flag for --status
+WORKTREE_FLAG=false  # Flag for --worktree
+WORKTREE_BASE=".worktrees"  # Base directory for worktrees
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -199,6 +203,10 @@ while [[ $# -gt 0 ]]; do
       # Handle stop after we know the ralph directory
       # For now just set a flag
       STOP_FLAG=true
+      shift
+      ;;
+    --worktree)
+      WORKTREE_FLAG=true
       shift
       ;;
     --tool)
@@ -387,6 +395,17 @@ if [[ -n "$RALPH_JSON" ]]; then
   STOP_FILE="$RALPH_DIR/.ralph-stop"
 fi
 
+# Handle --worktree flag (must be before --stop so STOP_FILE path is correct)
+if [[ "$WORKTREE_FLAG" == true ]]; then
+  if [[ -z "$RALPH_JSON" ]]; then
+    echo -e "${RED}${E_ERROR} Error: --worktree requires a ralph project path${NC}"
+    exit 1
+  fi
+  # Store original paths for setup_worktree (called after functions are defined)
+  ORIG_RALPH_DIR="$RALPH_DIR"
+  ORIG_RALPH_JSON="$RALPH_JSON"
+fi
+
 # Handle --stop flag now that we know the directory
 if [[ "$STOP_FLAG" == true ]]; then
   if [[ -z "$RALPH_JSON" ]]; then
@@ -416,6 +435,75 @@ init_progress_header() {
   fi
 
   echo "---"
+}
+
+# Ensure .worktrees/ is in .gitignore
+ensure_gitignore_worktrees() {
+  if ! grep -q "^\.worktrees/$" .gitignore 2>/dev/null; then
+    echo ".worktrees/" >> .gitignore
+    echo -e "${DIM}Added .worktrees/ to .gitignore${NC}"
+  fi
+}
+
+# Setup git worktree for isolated execution
+setup_worktree() {
+  local ralph_dir="$1"
+  local ralph_json="$2"
+  
+  # Extract feature name from ralph_dir (e.g., ralph/auth -> auth)
+  local feature_name=$(basename "$ralph_dir")
+  
+  # Read branch name from ralph.json
+  local branch_name=$(jq -r '.branchName' "$ralph_json")
+  if [[ -z "$branch_name" || "$branch_name" == "null" ]]; then
+    echo -e "${RED}${E_ERROR} Error: No branchName in $ralph_json${NC}"
+    exit 1
+  fi
+  
+  # Ensure .worktrees/ is gitignored
+  ensure_gitignore_worktrees
+  
+  # Set worktree path
+  WORKTREE_DIR="$WORKTREE_BASE/$feature_name"
+  
+  # Handle existing worktree
+  if [[ -d "$WORKTREE_DIR" ]]; then
+    echo ""
+    echo -e "${YELLOW}${E_WARN}Worktree already exists: $WORKTREE_DIR${NC}"
+    read -p "Reuse existing worktree? [y/N]: " response
+    if [[ ! "$response" =~ ^[Yy]$ ]]; then
+      echo -e "${RED}${E_ERROR} Aborted. Remove worktree manually:${NC}"
+      echo "  git worktree remove $WORKTREE_DIR"
+      exit 1
+    fi
+    echo -e "${DIM}Reusing existing worktree...${NC}"
+  else
+    # Create worktree base directory
+    mkdir -p "$WORKTREE_BASE"
+    
+    # Try to add worktree on existing branch, or create new branch
+    echo -e "${DIM}Creating worktree at $WORKTREE_DIR on branch $branch_name...${NC}"
+    if ! git worktree add "$WORKTREE_DIR" "$branch_name" 2>/dev/null; then
+      # Branch doesn't exist, create it from current HEAD
+      git worktree add -b "$branch_name" "$WORKTREE_DIR"
+    fi
+  fi
+  
+  # Copy ralph project files to worktree (mkdir -p for safety)
+  echo -e "${DIM}Copying ralph files to worktree...${NC}"
+  mkdir -p "$WORKTREE_DIR/$ralph_dir"
+  cp -r "$ralph_dir"/* "$WORKTREE_DIR/$ralph_dir/"
+  
+  # Update all paths to point to worktree
+  RALPH_JSON="$WORKTREE_DIR/$ralph_json"
+  RALPH_DIR="$WORKTREE_DIR/$ralph_dir"
+  PROGRESS_FILE="$RALPH_DIR/progress.txt"
+  LEARNINGS_FILE="$RALPH_DIR/AGENTS.md"
+  LAST_BRANCH_FILE="$RALPH_DIR/.last-branch"
+  STOP_FILE="$RALPH_DIR/.ralph-stop"
+  ARCHIVE_DIR="$WORKTREE_DIR/ralph/archive"
+  
+  echo -e "${GREEN}${E_CHECK} Worktree ready:${NC} $WORKTREE_DIR"
 }
 
 # Generate the prompt with pre-computed variables
@@ -766,6 +854,11 @@ ensure_learnings_file() {
 EOF
   fi
 }
+
+# Actually setup worktree now that functions are defined
+if [[ "$WORKTREE_FLAG" == true ]]; then
+  setup_worktree "$ORIG_RALPH_DIR" "$ORIG_RALPH_JSON"
+fi
 
 # Handle --next-prompt flag
 # Headers go to stderr so prompt content can be piped to an agent
