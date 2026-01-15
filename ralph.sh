@@ -1319,6 +1319,8 @@ if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
   # Create temp file for output capture
   TEMP_OUTPUT=$(mktemp)
   
+  [[ -n "$DEBUG" ]] && echo "[DEBUG] Working directory: $(pwd)"
+
   # Run the tool with learn prompt (redirect output to file)
   if [[ "$TOOL" == "amp" ]]; then
     echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
@@ -1482,6 +1484,8 @@ for i in $(seq 1 $MAX_ITERATIONS); do
         # Create temp file for output capture
         TEMP_OUTPUT=$(mktemp)
         
+        [[ -n "$DEBUG" ]] && echo "[DEBUG] Working directory: $(pwd)"
+
         # Run the tool with learn prompt (redirect output to file)
         if [[ "$TOOL" == "amp" ]]; then
           echo "$PROMPT" | "$TOOL_CMD" --dangerously-allow-all "${TOOL_ARGS[@]}" > "$TEMP_OUTPUT" 2>&1 &
@@ -1613,6 +1617,8 @@ for i in $(seq 1 $MAX_ITERATIONS); do
 
   # Create temp file for output capture
   TEMP_OUTPUT=$(mktemp)
+
+  [[ -n "$DEBUG" ]] && echo "[DEBUG] Working directory: $(pwd)"
 
   # Run the selected tool with the ralph prompt (redirect output to file)
   if [[ "$TOOL" == "amp" ]]; then
