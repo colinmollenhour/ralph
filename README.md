@@ -13,6 +13,17 @@ Each iteration spawns a fresh session with clean context to prevent context rot.
 > 
 > [Read Ryan's in-depth article on how he uses Ralph](https://x.com/ryancarson/status/2008548371712135632)
 
+## Added Features
+
+- Redesigned skills workflows and file locations
+- Run from anywhere, prompt embedded in the script
+- Support for OpenCode and Claude Code
+- Prettier output with process PID, CPU %, Memory, Remote Port, task wall time, total wall time
+- Automatic worktree creation, no manually moving plans to worktrees
+- More efficient bookkeeping (jq - much faster than the LLM)
+- Adds back the original plan context, either in full or in part (split up if it's large)
+  - The original plan context was "lost" and Ralph was only getting the basic user story and acceptance criteria but no commentary
+
 ## Quick Start
 
 1. **Create a plan/PRD** (optional - use `ralph-prd` skill or write manually):
@@ -116,8 +127,8 @@ cp -r skills/ralph-prep ~/.config/amp/skills/
 
 # Or via curl (no clone needed)
 mkdir -p ~/.config/amp/skills/{ralph-prd,ralph-prep}
-curl -o ~/.config/amp/skills/ralph-prd/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph-prd/SKILL.md
-curl -o ~/.config/amp/skills/ralph-prep/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph-prep/SKILL.md
+curl -o ~/.config/amp/skills/ralph-prd/SKILL.md https://raw.githubusercontent.com/colinmollenhour/ralph/main/skills/ralph-prd/SKILL.md
+curl -o ~/.config/amp/skills/ralph-prep/SKILL.md https://raw.githubusercontent.com/colinmollenhour/ralph/main/skills/ralph-prep/SKILL.md
 ```
 
 **For Claude Code and OpenCode:**
@@ -128,8 +139,8 @@ cp -r skills/ralph-prep ~/.claude/skills/
 
 # Or via curl (no clone needed)
 mkdir -p ~/.claude/skills/{ralph-prd,ralph-prep}
-curl -o ~/.claude/skills/ralph-prd/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph-prd/SKILL.md
-curl -o ~/.claude/skills/ralph-prep/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph-prep/SKILL.md
+curl -o ~/.claude/skills/ralph-prd/SKILL.md https://raw.githubusercontent.com/colinmollenhour/ralph/main/skills/ralph-prd/SKILL.md
+curl -o ~/.claude/skills/ralph-prep/SKILL.md https://raw.githubusercontent.com/colinmollenhour/ralph/main/skills/ralph-prep/SKILL.md
 ```
 
 ## Workflow
