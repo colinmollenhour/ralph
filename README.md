@@ -2,15 +2,20 @@
 
 ![Ralph](ralph.webp)
 
-Ralph is an autonomous AI agent loop that runs AI coding tools ([Amp](https://ampcode.com) by default) repeatedly until all PRD items are complete. Each iteration is a fresh instance of the agent with clean context to prevent context rot. Memory persists via git history, `progress.txt`, and `ralph.json`.
+Ralph is an autonomous AI agent loop that runs AI coding agents repeatedly until all project items are complete.
 
-Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
+Each iteration spawns a fresh session with clean context to prevent context rot. Memory persists via git history and simple, readable files on disk.
 
-[Read my in-depth article on how I use Ralph](https://x.com/ryancarson/status/2008548371712135632)
+> [!NOTE]  
+> This is a fork of Ryan Carson's [Ralph](https://github.com/snarktank/ralph) which he wished to preserve as a simpler script.
+> 
+> Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
+> 
+> [Read Ryan's in-depth article on how he uses Ralph](https://x.com/ryancarson/status/2008548371712135632)
 
 ## Quick Start
 
-1. **Create a PRD** (optional - use `ralph-prd` skill or write manually):
+1. **Create a plan/PRD** (optional - use `ralph-prd` skill or write manually):
    ```
    > Use the ralph-prd skill to create a PRD for user authentication
    ```
@@ -18,7 +23,7 @@ Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
    
    Alternatively, you can write a PRD manually in `plans/` directory.
 
-2. **Convert to Ralph format** using the `ralph-prep` skill (**REQUIRED**):
+2. **Convert your plans to Ralph format** using the `ralph-prep` skill (**REQUIRED**):
    ```
    > Use the ralph-prep skill to convert plans/auth.md
    ```
@@ -26,19 +31,19 @@ Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
    
    **Note:** `ralph-prep` works with any PRD file (created by `ralph-prd` or written manually).
 
-3. **Run Ralph:**
+3. **Run Ralph: (example plan called "auth")**
    ```bash
    ./ralph.sh ralph/auth
    ```
-   Or just `./ralph.sh` for interactive chooser
+   Or just `./ralph.sh` to use the first incomplete plan if there is only one plan or present an interactive chooser if there is more than one.
 
 4. **Monitor progress:**
    ```bash
-   # See what Ralph will work on next
+   # See Ralph's progress
+   ./ralph.sh ralph/auth --status
+
+   # See the next prompt Ralph will use - no magic!
    ./ralph.sh ralph/auth --next-prompt
-   
-   # Check completion status
-   jq '[.userStories[] | select(.passes == false)] | length' ralph/auth/ralph.json
    ```
 
 ## When to Use ralph-prd
@@ -48,28 +53,29 @@ The `ralph-prd` skill is **optional** but useful for:
 - **Large projects** where structured planning helps
 - **Teams** who want consistent PRD format across features
 
-For simple features, you can write PRDs manually in the `plans/` directory. The **only required skill** is `ralph-prep`, which converts any PRD (manual or generated) into Ralph's execution format.
+For simple features, you can write PRDs manually in the `plans/` directory.
+
+> [!TIP]
+> The **only required skill** is `ralph-prep`, which converts any plan or PRD (manual or generated) into Ralph's execution format.
 
 ## Directory Structure
 
 ```
 project-root/
-├── plans/                      # Your PRDs (created by ralph-prd skill or manually)
-│   ├── auth.md
+├── plans/                      # Your PRDs (created by ralph-prd skill or manually - can live anywhere, actually)
+│   ├── auth.md                 # These files will not be modified by Ralph
 │   └── dashboard.md
 │
-├── ralph/                      # Auto-generated execution directories
-│   ├── auth/
-│   │   ├── README.md          # Primary plan
-│   │   ├── ralph.json         # Execution config with user stories
-│   │   ├── progress.txt       # Simple iteration history
-│   │   ├── AGENTS.md          # Learnings (created on first task)
-│   │   └── [domain].md        # Domain-specific plans (if split)
-│   │
-│   └── archive/               # Completed runs
-│       └── 2026-01-14-auth/
-│
-└── ralph.sh                    # Main script
+└── ralph/                      # Auto-generated execution directories
+    ├── auth/                   # Project slug in this example is "auth", derived from plans/auth.md
+    │   ├── README.md           # Primary plan description, either a simple copy of your plan or a shortened high-level view of it if split
+    │   ├── ralph.json          # Execution config and status with user stories
+    │   ├── progress.txt        # Simple iteration history log
+    │   ├── AGENTS.md           # Learnings from each iteration
+    │   └── [domain].md         # Domain-specific plans (if auto-split by the ralph-prep step)
+    │
+    └── archive/                # Completed runs
+        └── 2026-01-14-auth/
 ```
 
 ## Prerequisites
@@ -80,27 +86,27 @@ project-root/
   - [OpenCode](https://github.com/AmruthPillai/OpenCode)
 - Common shell utilities:
   - `jq` for JSON manipulation (`brew install jq` on macOS, `apt-get install jq` on Ubuntu)
-  - `sponge` from moreutils for in-place file updates (`brew install moreutils` on macOS, `apt-get install moreutils` on Ubuntu)
+  - `git` of course
+  - `sed`, etc.
 - A git repository for your project
 
 ## Setup
 
-### Option 1: Install globally (Recommended)
+### Step 1: Install `ralph.sh`
 
-Download and install ralph.sh to your PATH:
+Download and install `ralph.sh` to your `PATH` for easy access, although it can be invoked from anywhere.
 
 ```bash
-# Download and install ralph.sh to your PATH
-curl -o ~/.local/bin/ralph.sh https://raw.githubusercontent.com/snarktank/ralph/main/ralph.sh
+curl -o ~/.local/bin/ralph.sh https://raw.githubusercontent.com/colinmollenhour/ralph/main/ralph.sh
 chmod +x ~/.local/bin/ralph.sh
 
 # Ensure ~/.local/bin is in PATH (add to ~/.bashrc, ~/.zshrc, or your shell's config)
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### Option 2: Install skills
+### Step 2: Install skills
 
-Copy the skills to your Amp or Claude config for use across all projects:
+Copy the [Agent Skills](https://agentskills.io/) to your Amp or Claude config for use across all projects:
 
 **For Amp:**
 ```bash
@@ -114,7 +120,7 @@ curl -o ~/.config/amp/skills/ralph-prd/SKILL.md https://raw.githubusercontent.co
 curl -o ~/.config/amp/skills/ralph-prep/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph-prep/SKILL.md
 ```
 
-**For Claude Code:**
+**For Claude Code and OpenCode:**
 ```bash
 # From local clone
 cp -r skills/ralph-prd ~/.claude/skills/
@@ -126,49 +132,26 @@ curl -o ~/.claude/skills/ralph-prd/SKILL.md https://raw.githubusercontent.com/sn
 curl -o ~/.claude/skills/ralph-prep/SKILL.md https://raw.githubusercontent.com/snarktank/ralph/main/skills/ralph-prep/SKILL.md
 ```
 
-### Option 3: Copy to your project (Alternative)
-
-If you prefer to keep ralph.sh in your project directory:
-
-```bash
-# From your project root
-mkdir -p scripts/ralph
-cp /path/to/ralph/ralph.sh scripts/ralph/
-chmod +x scripts/ralph/ralph.sh
-```
-
-### Configure Amp auto-handoff (recommended)
-
-Add to `~/.config/amp/settings.json`:
-
-```json
-{
-  "amp.experimental.autoHandoff": { "context": 90 }
-}
-```
-
-This enables automatic handoff when context fills up, allowing Ralph to handle large stories that exceed a single context window.
-
 ## Workflow
 
-### 1. Create a PRD (Optional)
+### Step 1. Create a PRD
 
-**Option A:** Use the ralph-prd skill to generate a detailed requirements document:
-
-```
-Load the ralph-prd skill and create a PRD for [your feature description]
-```
-
-Answer the clarifying questions. The skill saves output to `plans/[feature-name].md`.
-
-**Option B:** Write a PRD manually in `plans/[feature-name].md`
-
-### 2. Convert PRD to Ralph format (**REQUIRED**)
-
-Use the ralph-prep skill to convert the markdown PRD to a Ralph execution directory:
+Ideally you should have a solid list of user stories and acceptance criteria. The `ralph-prd` skill will generate these for you from
+your existing plan files or from your session context. This isn't strictly required, but this system is designed to have user stories
+and acceptance criteria.
 
 ```
-Load the ralph-prep skill and convert plans/[feature-name].md
+Use the ralph-prd skill to create a PRD for [your feature description/files]
+```
+
+The skill saves output to `plans/PRD-[feature-name].md`.
+
+### Step 2. Convert your plan/PRD to Ralph format (**REQUIRED**)
+
+Use the `ralph-prep` skill to convert the markdown PRD to a Ralph execution directory:
+
+```
+Use the ralph-prep skill to prepare plans/PRD-[feature-name].md
 ```
 
 This creates `ralph/[feature-name]/` with:
@@ -177,38 +160,39 @@ This creates `ralph/[feature-name]/` with:
 - `progress.txt` - Iteration log initialized with header
 - `[domain].md` files - Domain-specific plans (only if PRD was large and split)
 
-### 3. Run Ralph
+### Step 3. Run Ralph
+
+You are now ready to run Ralph. If you have just one plan simply run `ralph.sh` and watch it go!
 
 ```bash
-# Interactive chooser (if multiple projects)
-./ralph.sh
-
 # Run specific project
-./ralph.sh ralph/auth
+ralph.sh ralph/auth
 
-# With options
-./ralph.sh ralph/auth -n 10              # Max 10 iterations
-./ralph.sh ralph/auth --tool claude      # Use Claude Code
-./ralph.sh ralph/auth --tool opencode    # Use OpenCode
-./ralph.sh ralph/auth --next-prompt      # Debug: see prompt without running
-./ralph.sh ralph/auth --learn            # Normal execution + learn on final iteration
-./ralph.sh ralph/auth --learn-now        # Just run learn prompt, no tasks
+# With options (can be combined)
+ralph.sh ralph/auth -n 10              # Max 10 iterations (default 20)
+ralph.sh ralph/auth --tool claude      # Use Claude Code
+ralph.sh ralph/auth --tool opencode    # Use OpenCode
+ralph.sh ralph/auth --next-prompt      # Inspect the next prompt without executing the agent
+ralph.sh ralph/auth --learn            # Normal execution + learn on final iteration
+ralph.sh ralph/auth --learn-now        # Just run the learn prompt to absorb the AGENTS.md into your main AGENTS.md
+ralph.sh ralph/auth --worktree         # Create a git worktree for branch "ralph/auth" at `.worktrees/auth` for execution in a clean environment
 
-# Stop a running Ralph
-./ralph.sh --stop ralph/auth
+# Stop a running Ralph gracefully (let it finish the current task before stopping)
+ralph.sh ralph/auth --stop
 ```
 
 Run `ralph.sh --help` for all options.
 
 Ralph will:
-1. Create a feature branch (from `branchName` in ralph.json)
+1. Create a feature branch (from `branchName` in `ralph.json` - and a worktree if `--worktree` is used)
 2. Pick the highest priority story where `passes: false`
 3. Implement that single story
-4. Run quality checks (typecheck, tests)
-5. Commit if checks pass
+4. Run quality checks (lint, typecheck, tests)
+5. Append learnings to the `ralph/[feature]/AGENTS.md` file
 6. Update `ralph.json` to mark story as `passes: true`
-7. Append learnings to `progress.txt`
-8. Repeat until all stories pass or max iterations reached
+7. Commit all changed files including the Ralph files
+8. Repeat from step 2 until all stories pass or max iterations reached (the loop)
+9. Remove all Ralph files in the last commit (easy to recover)
 
 ## Key Files
 
@@ -244,7 +228,8 @@ npm run dev
 
 Each iteration spawns a **new AI instance** (Amp, Claude Code, or OpenCode) with clean context. The only memory between iterations is:
 - Git history (commits from previous iterations)
-- `progress.txt` (learnings and context)
+- `AGENTS.md` (project-specific learnings)
+- `progress.txt` (history log)
 - `ralph.json` (which stories are done)
 
 ### Token Efficiency
@@ -252,7 +237,7 @@ Each iteration spawns a **new AI instance** (Amp, Claude Code, or OpenCode) with
 Ralph pre-computes all context and injects it directly into the prompt:
 - Story details, acceptance criteria, and commands are pre-computed
 - Learnings from `AGENTS.md` are included in the prompt
-- Agents don't need to read ralph.json or extract story details
+- Agents don't need to read `ralph.json` (although sometimes they do anyway)
 - Expected overhead: ~1800-3500 tokens vs ~8000-15000 in naive approach
 
 ### Small Tasks
@@ -272,48 +257,49 @@ Too big (split these):
 
 ### Learnings Storage
 
-Each Ralph project has its own `AGENTS.md` file (created automatically on first task). Agents append learnings here during execution.
+Each Ralph project has its own `AGENTS.md` file (created automatically). Agents append learnings here during execution.
 
 To absorb learnings into the project root `./AGENTS.md`:
 ```bash
 ./ralph.sh ralph/auth --learn      # Absorb after all stories complete
-./ralph.sh ralph/auth --learn-now  # Absorb immediately (no tasks)
+./ralph.sh ralph/auth --learn-now  # or do it later after review
 ```
 
-Examples of what to add to AGENTS.md:
+Examples of what is added to `AGENTS.md`:
 - Patterns discovered ("this codebase uses X for Y")
 - Gotchas ("do not forget to update Z when changing W")
 - Useful context ("the settings panel is in component X")
 
 ### Feedback Loops
 
-Ralph only works if there are feedback loops:
+Ralph only works if there are solid feedback loops:
 - Typecheck catches type errors
 - Tests verify behavior
 - CI must stay green (broken code compounds across iterations)
 
 ### Browser Verification for UI Stories
 
-Frontend stories must include "Verify in browser using dev-browser skill" in acceptance criteria. Ralph will use the dev-browser skill to navigate to the page, interact with the UI, and confirm changes work.
+Frontend stories must include "Verify in browser using dev-browser skill" in acceptance criteria. Ralph will use the dev-browser
+skill to navigate to the page, interact with the UI, and confirm changes work.
 
 ### Stop Condition
 
 When all stories have `passes: true`, Ralph outputs `<promise>COMPLETE</promise>` and the loop exits.
 
-## Debugging
+## Inspection/Debugging
 
 Use `--next-prompt` to see exactly what context Ralph loads:
 ```bash
 ./ralph.sh ralph/auth --next-prompt
 ```
 
-This shows the full prompt, plan files, and progress context without invoking the LLM.
+This shows the full prompt, plan files, and progress context without invoking the agent.
 
 Check current state:
 
 ```bash
 # See which stories are done
-jq '.userStories[] | {id, title, passes}' ralph/auth/ralph.json
+ralph.sh ralph/auth --status
 
 # See learnings from previous iterations
 cat ralph/auth/progress.txt
@@ -324,26 +310,28 @@ git log --oneline -10
 
 ## Customizing the Prompt
 
+The prompt should work well for general purposes but you can provide your own if your project needs different instructions like special
+git commit message formats or automatically creating pull requests, running code review tools, etc.
+
 Ralph looks for prompts in this order:
 1. `--custom-prompt <file>` - Explicit flag takes highest priority
 2. `[ralph-dir]/.agents/ralph.md` - Project-local template (if exists)
 3. Embedded default prompt
 
 To customize for your project:
-1. Run `ralph.sh --eject-prompt ralph/auth` which will create `ralph/auth/.agents/ralph.md`
-2. Modify it for your needs  
-3. Ralph will automatically use it
+1. Run `ralph.sh --eject-prompt` which will create `.agents/ralph.md` in your project directory.
+2. Modify it for your needs, probably add it to your repo.
+3. Ralph will automatically use it over the embedded one for this project.
 
 ### Post-Completion Cleanup
 
-When all stories are complete, Ralph automatically removes working files from git (but keeps them on disk) in a final commit.
+When all stories are complete, Ralph automatically removes working files in a final commit, but of course they can be recovered.
 
-**This cleanup commit can be reverted:**
 ```bash
-# Undo the cleanup
-git revert HEAD
+# Revert the last commit
+git reset --hard HEAD^
 
-# Recover the files
+# Recover the files without changing history
 git checkout HEAD~1 -- ralph/auth/
 ```
 
@@ -360,7 +348,7 @@ A minimal test project is included to try Ralph without affecting your own codeb
 ```bash
 cd test-project
 
-# Reset to initial state (creates git repo if needed)
+# Reset to initial state (creates git repo if needed - can do this multiple times)
 ./reset.sh
 
 # Preview what Ralph will do
@@ -378,6 +366,7 @@ The test project has 5 simple user stories that add math functions to `src/math.
 
 ## References
 
+- [Ryan Carson's original script](https://github.com/snarktank/ralph) which he wished to preserve as a simple script.
 - [Geoffrey Huntley's Ralph article](https://ghuntley.com/ralph/)
 - [Amp documentation](https://ampcode.com/manual)
 - [Claude Code documentation](https://docs.anthropic.com/en/docs/claude-code)
