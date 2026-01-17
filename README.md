@@ -17,10 +17,11 @@ Each iteration spawns a fresh session with clean context to prevent context rot.
 
 - Redesigned skills workflows and file locations
 - Run from anywhere, prompt embedded in the script
-- Support for OpenCode and Claude Code
+- Added support for OpenCode and Claude Code (in addition to Amp)
 - Prettier output with process PID, CPU %, Memory, Remote Port, task wall time, total wall time
 - Automatic worktree creation, no manually moving plans to worktrees
-- More efficient bookkeeping (jq - much faster than the LLM)
+  - Commits bookkeeping files for the ability to rewind, but rewrites all commits once complete to keep commits clean
+- More efficient bookkeeping (jq - much more efficient than the LLM)
 - Adds back the original plan context, either in full or in part (split up if it's large)
   - The original plan context was "lost" and Ralph was only getting the basic user story and acceptance criteria but no commentary
 

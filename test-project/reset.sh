@@ -139,6 +139,7 @@ EOF
 # Initialize fresh git repo
 git init
 git add .
+git rm -rf --cached ralph
 git commit -m "initial"
 
 echo "Done! Test project reset to clean state."
