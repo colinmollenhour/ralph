@@ -1710,12 +1710,12 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     show_final_wall_time
     echo ""
 
-    if [[ "$IGNORE_FLAG" == "false" && "$PRESERVE_FLAG" == "false" ]]; then
-      FEATURE_NAME=$(basename "$RALPH_DIR")
-      # Find the start commit message
-      START_COMMIT_MSG="ralph: Add $FEATURE_NAME project files"
-      START_COMMIT=$(git log --format="%H" --grep="$START_COMMIT_MSG" -n 1)
+    FEATURE_NAME=$(basename "$RALPH_DIR")
+    # Find the start commit message
+    START_COMMIT_MSG="ralph: Add $FEATURE_NAME project files"
+    START_COMMIT=$(git log --format="%H" --grep="$START_COMMIT_MSG" -n 1)
 
+    if [[ "$IGNORE_FLAG" == "false" && "$PRESERVE_FLAG" == "false" ]]; then
       if [[ -n "$START_COMMIT" ]]; then
         START_PARENT=$(git rev-parse "${START_COMMIT}^")
         echo -e "${DIM}Scrubbing ralph directory from history ($START_PARENT..HEAD)...${NC}"
@@ -1733,10 +1733,12 @@ for i in $(seq 1 $MAX_ITERATIONS); do
          echo -e "${DIM}To undo cleanup: git revert HEAD${NC}"
          echo -e "${DIM}To recover files: git checkout HEAD~1 -- $RALPH_DIR/${NC}"
       fi
-    else
-      echo -e "${DIM}Working files have been cleaned up in a separate commit.${NC}"
-      echo -e "${DIM}To undo cleanup: git revert HEAD${NC}"
-      echo -e "${DIM}To recover files: git checkout HEAD~1 -- $RALPH_DIR/${NC}"
+    elif [[ "$IGNORE_FLAG" == "false" ]]; then
+      echo -e "${DIM}Working files have been preserved.${NC}"
+      echo -e "${DIM}To clean up preserving history:${NC}"
+      echo -e "  git rm -rf ralph/ && git commit -m \"ralph: Clean up ralph/ history\""
+      echo -e "${DIM}To completely remove from history (keeping the files in hte working tree):${NC}"
+      echo -e "  git filter-branch --force --index-filter \"git rm -rf --cached --ignore-unmatch $RALPH_DIR\" --prune-empty \"$START_PARENT..HEAD\"
     fi
 
     exit 0
