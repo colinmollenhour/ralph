@@ -714,11 +714,13 @@ PROMPT_INSTRUCTIONS_CONT
    
    This atomic commit ensures bookkeeping is never forgotten.
    
+**CRITICAL: You MUST use the exact bash commands below for bookkeeping. Do NOT edit ralph.json or progress.md with your editor — other tasks have already been marked complete and editing the file directly will overwrite their status.**
+
 Commands:
 PROMPT_INSTRUCTIONS2
 
   echo "   \`\`\`bash"
-  echo "   # a. Mark task complete"
+  echo "   # a. Mark task complete (MUST use jq — do NOT edit ralph.json directly)"
   echo "   $update_task_cmd"
   echo ""
   echo "   # b. Append progress"
@@ -901,10 +903,12 @@ jq '[.tasks[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSON"
 6. **Commit** with message starting: `feat: $TASK_ID - $TASK_TITLE`
    
    This atomic commit ensures bookkeeping is never forgotten.
-   
+
+**CRITICAL: You MUST use the exact bash commands below for bookkeeping. Do NOT edit ralph.json or progress.md with your editor — other tasks have already been marked complete and editing the file directly will overwrite their status.**
+
 Commands:
    ```bash
-   # a. Mark task complete
+   # a. Mark task complete (MUST use jq — do NOT edit ralph.json directly)
    jq '(.tasks[] | select(.id == "'\"$TASK_ID\"'") | .passes) = true' "$RALPH_JSON" | sponge "$RALPH_JSON"
    
    # b. Append progress

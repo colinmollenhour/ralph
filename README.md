@@ -2,7 +2,7 @@
 
 ![Ralph](ralph.webp)
 
-Ralph is an autonomous AI agent loop that runs AI coding agents repeatedly until all project items are complete.
+Ralph is an autonomous AI agent loop that runs AI coding agents repeatedly until all project tasks are complete.
 
 Each iteration spawns a fresh session with clean context to prevent context rot. Memory persists via git history and simple, readable files on disk.
 
@@ -16,78 +16,77 @@ Each iteration spawns a fresh session with clean context to prevent context rot.
 ## Added Features
 
 - Redesigned skills workflows and file locations
+- Agent SOP-style planning directories with `.code-task.md` specification files
 - Run from anywhere, prompt embedded in the script
 - Added support for OpenCode and Claude Code (in addition to Amp)
 - Prettier output with process PID, CPU %, Memory, Remote Port, task wall time, total wall time
 - Automatic worktree creation, no manually moving plans to worktrees
   - Commits bookkeeping files for the ability to rewind, but rewrites all commits once complete to keep commits clean
 - More efficient bookkeeping (jq - much more efficient than the LLM)
-- Adds back the original plan context, either in full or in part (split up if it's large)
-  - The original plan context was "lost" and Ralph was only getting the basic user story and acceptance criteria but no commentary
+- Task specs are self-contained with description, requirements, acceptance criteria, and references to design/research docs
 
 ## Quick Start
 
-1. **Create a plan/PRD** (optional - use `ralph-prd` skill or write manually):
+1. **Create a planning directory** with task specifications:
    ```
-   > Use the ralph-prd skill to create a PRD for user authentication
+   planning/my-feature/
+   ├── summary.md                    # Project overview
+   ├── design/detailed-design.md     # Technical design (optional)
+   └── implementation/
+       ├── plan.md                   # Step checklist
+       ├── step01/
+       │   ├── task-01-foo.code-task.md
+       │   └── task-02-bar.code-task.md
+       └── step02/
+           └── task-01-baz.code-task.md
    ```
-   This creates `plans/auth.md`
-   
-   Alternatively, you can write a PRD manually in `plans/` directory.
 
-2. **Convert your plans to Ralph format** using the `ralph-prep` skill (**REQUIRED**):
-   ```
-   > Use the ralph-prep skill to convert plans/auth.md
-   ```
-   This creates `ralph/auth/ralph.json` and associated files
-   
-   **Note:** `ralph-prep` works with any PRD file (created by `ralph-prd` or written manually).
+   You can create these manually or use Agent SOP tooling (pdd, code-task-generator).
 
-3. **Run Ralph: (example plan called "auth")**
+2. **Generate the Ralph execution tracker** using the `ralph-sop` skill:
+   ```
+   > Use the ralph-sop skill to prepare planning/my-feature for Ralph
+   ```
+   This creates `planning/my-feature/implementation/ralph.json` and `progress.md`.
+
+3. **Run Ralph:**
    ```bash
-   ./ralph.sh ralph/auth
+   ./ralph.sh planning/my-feature
    ```
-   Or just `./ralph.sh` to use the first incomplete plan if there is only one plan or present an interactive chooser if there is more than one.
+   Or just `./ralph.sh` to use the first incomplete project if there is only one or present an interactive chooser if there are more.
 
 4. **Monitor progress:**
    ```bash
    # See Ralph's progress
-   ./ralph.sh ralph/auth --status
+   ./ralph.sh planning/my-feature --status
 
    # See the next prompt Ralph will use - no magic!
-   ./ralph.sh ralph/auth --next-prompt
+   ./ralph.sh planning/my-feature --next-prompt
    ```
-
-## When to Use ralph-prd
-
-The `ralph-prd` skill is **optional** but useful for:
-- **Complex features** requiring detailed acceptance criteria
-- **Large projects** where structured planning helps
-- **Teams** who want consistent PRD format across features
-
-For simple features, you can write PRDs manually in the `plans/` directory.
-
-> [!TIP]
-> The **only required skill** is `ralph-prep`, which converts any plan or PRD (manual or generated) into Ralph's execution format.
 
 ## Directory Structure
 
 ```
 project-root/
-├── plans/                      # Your PRDs (created by ralph-prd skill or manually - can live anywhere, actually)
-│   ├── auth.md                 # These files will not be modified by Ralph
-│   └── dashboard.md
+├── planning/                          # Planning directories (one per feature)
+│   └── my-feature/
+│       ├── summary.md                 # Project overview
+│       ├── memory.md                  # Learnings from iterations (auto-created)
+│       ├── research/                  # Codebase research docs (optional)
+│       ├── design/
+│       │   └── detailed-design.md     # Technical design (optional)
+│       └── implementation/
+│           ├── plan.md                # Step checklist
+│           ├── ralph.json             # Execution tracker with tasks
+│           ├── progress.md            # Iteration history log
+│           ├── step01/
+│           │   ├── task-01-foo.code-task.md
+│           │   └── task-02-bar.code-task.md
+│           └── step02/
+│               └── task-01-baz.code-task.md
 │
-└── ralph/                      # Auto-generated execution directories
-    ├── auth/                   # Project slug in this example is "auth", derived from plans/auth.md
-    │   ├── README.md           # Primary plan description, either a simple copy of your plan or a shortened high-level view of it if split
-    │   ├── ralph.json          # Execution config and status with user stories
-    │   ├── progress.txt        # Simple iteration history log
-    │   ├── AGENTS.md           # Learnings from each iteration
-    │   └── [domain].md         # Domain-specific plans (if auto-split by the ralph-prep step)
-    │
-    └── archive/                # Completed runs
-        └── 2026-01-14-auth/
+└── archive/                           # Completed runs (optional)
+    └── 2026-01-14-my-feature/
 ```
 
 ## Prerequisites
@@ -98,8 +97,8 @@ project-root/
   - [OpenCode](https://github.com/AmruthPillai/OpenCode)
 - Common shell utilities:
   - `jq` for JSON manipulation (`brew install jq` on macOS, `apt-get install jq` on Ubuntu)
+  - `sponge` from moreutils (`brew install moreutils` on macOS, `apt-get install moreutils` on Ubuntu)
   - `git` of course
-  - `sed`, etc.
 - A git repository for your project
 
 ## Setup
@@ -116,108 +115,97 @@ chmod +x ~/.local/bin/ralph.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### Step 2: Install skills
+### Step 2: Install the skill
 
-Copy the [Agent Skills](https://agentskills.io/) to your Amp or Claude config for use across all projects:
+Copy the [Agent Skill](https://agentskills.io/) to your Amp or Claude config for use across all projects:
 
 **For Amp:**
 ```bash
 # From local clone
-cp -r skills/ralph-prd ~/.config/amp/skills/
-cp -r skills/ralph-prep ~/.config/amp/skills/
+cp -r skills/ralph-sop ~/.config/amp/skills/
 
 # Or via curl (no clone needed)
-mkdir -p ~/.config/amp/skills/{ralph-prd,ralph-prep}
-curl -o ~/.config/amp/skills/ralph-prd/SKILL.md https://raw.githubusercontent.com/colinmollenhour/ralph/main/skills/ralph-prd/SKILL.md
-curl -o ~/.config/amp/skills/ralph-prep/SKILL.md https://raw.githubusercontent.com/colinmollenhour/ralph/main/skills/ralph-prep/SKILL.md
+mkdir -p ~/.config/amp/skills/ralph-sop
+curl -o ~/.config/amp/skills/ralph-sop/SKILL.md https://raw.githubusercontent.com/colinmollenhour/ralph/main/skills/ralph-sop/SKILL.md
 ```
 
 **For Claude Code and OpenCode:**
 ```bash
 # From local clone
-cp -r skills/ralph-prd ~/.claude/skills/
-cp -r skills/ralph-prep ~/.claude/skills/
+cp -r skills/ralph-sop ~/.claude/skills/
 
 # Or via curl (no clone needed)
-mkdir -p ~/.claude/skills/{ralph-prd,ralph-prep}
-curl -o ~/.claude/skills/ralph-prd/SKILL.md https://raw.githubusercontent.com/colinmollenhour/ralph/main/skills/ralph-prd/SKILL.md
-curl -o ~/.claude/skills/ralph-prep/SKILL.md https://raw.githubusercontent.com/colinmollenhour/ralph/main/skills/ralph-prep/SKILL.md
+mkdir -p ~/.claude/skills/ralph-sop
+curl -o ~/.claude/skills/ralph-sop/SKILL.md https://raw.githubusercontent.com/colinmollenhour/ralph/main/skills/ralph-sop/SKILL.md
 ```
 
 ## Workflow
 
-### Step 1. Create a PRD
+### Step 1. Create a planning directory
 
-Ideally you should have a solid list of user stories and acceptance criteria. The `ralph-prd` skill will generate these for you from
-your existing plan files or from your session context. This isn't strictly required, but this system is designed to have user stories
-and acceptance criteria.
+Create a planning directory with task specifications following the Agent SOP convention. Each task is a self-contained `.code-task.md` file with description, technical requirements, acceptance criteria (Given/When/Then), and references to design/research docs.
 
-```
-Use the ralph-prd skill to create a PRD for [your feature description/files]
-```
+You can create these manually or use Agent SOP tooling. The key file is the `.code-task.md` spec -- each one should be small enough for an AI agent to complete in a single context window.
 
-The skill saves output to `plans/PRD-[feature-name].md`.
+### Step 2. Generate the execution tracker
 
-### Step 2. Convert your plan/PRD to Ralph format (**REQUIRED**)
-
-Use the `ralph-prep` skill to convert the markdown PRD to a Ralph execution directory:
+Use the `ralph-sop` skill to scan the task files and generate `ralph.json`:
 
 ```
-Use the ralph-prep skill to prepare plans/PRD-[feature-name].md
+Use the ralph-sop skill to prepare planning/my-feature
 ```
 
-This creates `ralph/[feature-name]/` with:
-- `README.md` - Primary plan (copy of source or high-level overview if split)
-- `ralph.json` - User stories structured for autonomous execution
-- `progress.txt` - Iteration log initialized with header
-- `[domain].md` files - Domain-specific plans (only if PRD was large and split)
+This creates `planning/my-feature/implementation/` with:
+- `ralph.json` - Task list with `passes` status for each task
+- `progress.md` - Iteration log initialized with header
 
 ### Step 3. Run Ralph
 
-You are now ready to run Ralph. If you have just one plan simply run `ralph.sh` and watch it go!
+You are now ready to run Ralph. If you have just one project simply run `ralph.sh` and watch it go!
 
 ```bash
 # Run specific project
-ralph.sh ralph/auth
+ralph.sh planning/my-feature
 
 # With options (can be combined)
-ralph.sh ralph/auth -n 10              # Max 10 iterations (default 20)
-ralph.sh ralph/auth --tool claude      # Use Claude Code
-ralph.sh ralph/auth --tool opencode    # Use OpenCode
-ralph.sh ralph/auth --next-prompt      # Inspect the next prompt without executing the agent
-ralph.sh ralph/auth --learn            # Normal execution + learn on final iteration
-ralph.sh ralph/auth --learn-now        # Just run the learn prompt to absorb the AGENTS.md into your main AGENTS.md
-ralph.sh ralph/auth --worktree         # Create a git worktree for branch "ralph/auth" at `.worktrees/auth` for execution in a clean environment
+ralph.sh planning/my-feature -n 10              # Max 10 iterations (default 50)
+ralph.sh planning/my-feature --tool claude      # Use Claude Code
+ralph.sh planning/my-feature --tool opencode    # Use OpenCode
+ralph.sh planning/my-feature --next-prompt      # Inspect the next prompt without executing the agent
+ralph.sh planning/my-feature --learn            # Normal execution + learn on final iteration
+ralph.sh planning/my-feature --learn-now        # Just run the learn prompt to absorb memory.md into your main AGENTS.md
+ralph.sh planning/my-feature --worktree         # Create a git worktree for isolated execution
 
 # Stop a running Ralph gracefully (let it finish the current task before stopping)
-ralph.sh ralph/auth --stop
+ralph.sh planning/my-feature --stop
 ```
 
 Run `ralph.sh --help` for all options.
 
 Ralph will:
 1. Create a feature branch (from `branchName` in `ralph.json` - and a worktree if `--worktree` is used)
-2. Pick the highest priority story where `passes: false`
-3. Implement that single story
-4. Run quality checks (lint, typecheck, tests)
-5. Append learnings to the `ralph/[feature]/AGENTS.md` file
-6. Update `ralph.json` to mark story as `passes: true`
-7. Commit all changed files including the Ralph files
-8. Repeat from step 2 until all stories pass or max iterations reached (the loop)
-9. Remove all Ralph files in the last commit (easy to recover)
+2. Pick the highest priority task where `passes: false`
+3. Read the `.code-task.md` spec and referenced design docs
+4. Implement that single task
+5. Run quality checks (lint, typecheck, tests)
+6. Update `ralph.json` to mark task as `passes: true`
+7. Append learnings to `memory.md`
+8. Commit all changed files including the bookkeeping files
+9. Repeat from step 2 until all tasks pass or max iterations reached (the loop)
+10. Remove all planning files in the last commit (easy to recover)
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `ralph.sh` | The bash loop that spawns fresh AI instances |
-| `plans/` | Source PRDs (user-created, read-only by Ralph) |
-| `ralph/[feature]/` | Execution directories (auto-generated) |
-| `ralph/[feature]/ralph.json` | User stories with `passes` status (the task list) |
-| `ralph/[feature]/progress.txt` | Simple iteration history |
-| `ralph/[feature]/AGENTS.md` | Learnings for future iterations (created on first task) |
-| `skills/ralph-prd/` | Optional skill for generating PRDs |
-| `skills/ralph-prep/` | **REQUIRED** skill for converting PRDs to execution directories |
+| `planning/[feature]/` | Planning directories (one per feature) |
+| `planning/[feature]/summary.md` | Project overview |
+| `planning/[feature]/implementation/ralph.json` | Tasks with `passes` status (the task list) |
+| `planning/[feature]/implementation/progress.md` | Iteration history |
+| `planning/[feature]/memory.md` | Learnings for future iterations (created on first task) |
+| `planning/[feature]/implementation/step*/task-*.code-task.md` | Individual task specifications |
+| `skills/ralph-sop/` | Skill for generating ralph.json from task specs |
 | `flowchart/` | Interactive visualization of how Ralph works |
 
 ## Flowchart
@@ -240,23 +228,19 @@ npm run dev
 
 Each iteration spawns a **new AI instance** (Amp, Claude Code, or OpenCode) with clean context. The only memory between iterations is:
 - Git history (commits from previous iterations)
-- `AGENTS.md` (project-specific learnings)
-- `progress.txt` (history log)
-- `ralph.json` (which stories are done)
+- `memory.md` (learnings from each iteration)
+- `progress.md` (history log)
+- `ralph.json` (which tasks are done)
 
 ### Token Efficiency
 
-Ralph pre-computes all context and injects it directly into the prompt:
-- Story details, acceptance criteria, and commands are pre-computed
-- Learnings from `AGENTS.md` are included in the prompt
-- Agents don't need to read `ralph.json` (although sometimes they do anyway)
-- Expected overhead: ~1800-3500 tokens vs ~8000-15000 in naive approach
+Ralph references task spec files by path rather than injecting their content. The agent reads the `.code-task.md` file which is self-contained with description, requirements, acceptance criteria, and references to design/research docs. Bookkeeping commands are pre-computed so the agent doesn't need to figure them out.
 
 ### Small Tasks
 
-Each PRD item should be small enough to complete in one context window. If a task is too big, the LLM runs out of context before finishing and produces poor code.
+Each task should be small enough to complete in one context window. If a task is too big, the LLM runs out of context before finishing and produces poor code.
 
-Right-sized stories:
+Right-sized tasks:
 - Add a database column and migration
 - Add a UI component to an existing page
 - Update a server action with new logic
@@ -269,15 +253,15 @@ Too big (split these):
 
 ### Learnings Storage
 
-Each Ralph project has its own `AGENTS.md` file (created automatically). Agents append learnings here during execution.
+Each Ralph project has its own `memory.md` file (created automatically). Agents append learnings here during execution.
 
 To absorb learnings into the project root `./AGENTS.md`:
 ```bash
-./ralph.sh ralph/auth --learn      # Absorb after all stories complete
-./ralph.sh ralph/auth --learn-now  # or do it later after review
+./ralph.sh planning/my-feature --learn      # Absorb after all tasks complete
+./ralph.sh planning/my-feature --learn-now  # or do it later after review
 ```
 
-Examples of what is added to `AGENTS.md`:
+Examples of what is added to `memory.md`:
 - Patterns discovered ("this codebase uses X for Y")
 - Gotchas ("do not forget to update Z when changing W")
 - Useful context ("the settings panel is in component X")
@@ -289,32 +273,27 @@ Ralph only works if there are solid feedback loops:
 - Tests verify behavior
 - CI must stay green (broken code compounds across iterations)
 
-### Browser Verification for UI Stories
-
-Frontend stories must include "Verify in browser using dev-browser skill" in acceptance criteria. Ralph will use the dev-browser
-skill to navigate to the page, interact with the UI, and confirm changes work.
-
 ### Stop Condition
 
-When all stories have `passes: true`, Ralph outputs `<promise>COMPLETE</promise>` and the loop exits.
+When all tasks have `passes: true`, Ralph outputs `<promise>COMPLETE</promise>` and the loop exits.
 
 ## Inspection/Debugging
 
 Use `--next-prompt` to see exactly what context Ralph loads:
 ```bash
-./ralph.sh ralph/auth --next-prompt
+./ralph.sh planning/my-feature --next-prompt
 ```
 
-This shows the full prompt, plan files, and progress context without invoking the agent.
+This shows the full prompt with task spec references and progress context without invoking the agent.
 
 Check current state:
 
 ```bash
-# See which stories are done
-ralph.sh ralph/auth --status
+# See which tasks are done
+ralph.sh planning/my-feature --status
 
 # See learnings from previous iterations
-cat ralph/auth/progress.txt
+cat planning/my-feature/implementation/progress.md
 
 # Check git history
 git log --oneline -10
@@ -327,7 +306,7 @@ git commit message formats or automatically creating pull requests, running code
 
 Ralph looks for prompts in this order:
 1. `--custom-prompt <file>` - Explicit flag takes highest priority
-2. `[ralph-dir]/.agents/ralph.md` - Project-local template (if exists)
+2. `<planning-dir>/.agents/ralph.md` - Project-local template (if exists)
 3. Embedded default prompt
 
 To customize for your project:
@@ -337,21 +316,21 @@ To customize for your project:
 
 ### Post-Completion Cleanup
 
-When all stories are complete, Ralph automatically removes working files in a final commit, but of course they can be recovered.
+When all tasks are complete, Ralph automatically removes planning files in a final commit, but of course they can be recovered.
 
 ```bash
 # Revert the last commit
 git reset --hard HEAD^
 
 # Recover the files without changing history
-git checkout HEAD~1 -- ralph/auth/
+git checkout HEAD~1 -- planning/my-feature/
 ```
 
 **To disable cleanup:** Create a custom prompt template without the cleanup instructions in the Stop Condition section.
 
 ## Archiving
 
-Ralph automatically archives previous runs when you start a new feature (different `branchName`). Archives are saved to `ralph/archive/YYYY-MM-DD-feature-name/`.
+Ralph automatically archives previous runs when you start a new feature (different `branchName`). Archives are saved alongside the planning directory.
 
 ## Testing with test-project
 
@@ -364,17 +343,17 @@ cd test-project
 ./reset.sh
 
 # Preview what Ralph will do
-../ralph.sh --next-prompt ralph/add-math-functions
+../ralph.sh planning/add-math-functions --next-prompt
 
 # Run Ralph (requires amp, claude, or opencode to be installed)
-../ralph.sh ralph/add-math-functions --tool amp
+../ralph.sh planning/add-math-functions --tool amp
 # or
-../ralph.sh ralph/add-math-functions --tool claude
+../ralph.sh planning/add-math-functions --tool claude
 # or
-../ralph.sh ralph/add-math-functions --tool opencode
+../ralph.sh planning/add-math-functions --tool opencode
 ```
 
-The test project has 5 simple user stories that add math functions to `src/math.ts`. Each story is small enough to complete in a single iteration, making it ideal for testing Ralph's behavior.
+The test project has 5 tasks across 2 steps that add math functions to `src/math.ts`. Each task is small enough to complete in a single iteration, making it ideal for testing Ralph's behavior.
 
 ## References
 
