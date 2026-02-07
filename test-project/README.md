@@ -7,25 +7,39 @@ This is a minimal test project for trying out Ralph.
 From this directory, run:
 
 ```bash
-# See what Ralph will do (without running the agent)
-../ralph.sh ralph/add-math-functions --next-prompt
+# Reset to clean state first
+bash reset.sh
 
-# Run Ralph with 2 iterations max
-../ralph.sh ralph/add-math-functions -n 2
+# See what Ralph will do (without running the agent)
+../ralph.sh planning/add-math-functions --next-prompt
+
+# Check task status
+../ralph.sh planning/add-math-functions --status
+
+# Run Ralph with 5 iterations max
+../ralph.sh planning/add-math-functions -n 5
 
 # Or with a specific tool
-../ralph.sh ralph/add-math-functions -n 2 --tool opencode
+../ralph.sh planning/add-math-functions -n 5 --tool claude
 ```
 
 ## What Ralph Will Do
 
 1. Add a `multiply` function to `src/math.ts`
-2. Add a `divide` function to `src/math.ts`
-3. Remove the TODO comments
-4. Run typecheck to verify
+2. Add a `divide` function with zero-division guard
+3. Add a `power` function
+4. Add a `modulo` function
+5. Add an `abs` function
+6. Remove all TODO comments
+7. Pass typecheck after each task
 
 ## Files
 
 - `src/math.ts` - The file Ralph will modify
-- `ralph/add-math-functions/` - Ralph execution directory
-- `plans/add-math-functions.md` - Source PRD
+- `planning/add-math-functions/` - Planning directory (SOP format)
+  - `summary.md` - Project overview
+  - `implementation/ralph.json` - Task tracker
+  - `implementation/plan.md` - Step checklist
+  - `implementation/step01/` - Core arithmetic tasks (multiply, divide)
+  - `implementation/step02/` - Utility math tasks (power, modulo, abs)
+- `reset.sh` - Reset everything to clean state

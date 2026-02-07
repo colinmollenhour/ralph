@@ -1,9 +1,9 @@
 #!/bin/bash
 # Ralph Wiggum - Long-running AI agent loop
-# Usage: ./ralph.sh [OPTIONS] [ralph/feature | ralph/feature/ralph.json]
+# Usage: ./ralph.sh [OPTIONS] [path/to/planning/feature | path/to/implementation/ralph.json]
 #
 # Exit codes:
-#   0 - All stories completed successfully
+#   0 - All tasks completed successfully
 #   1 - Error occurred (invalid arguments, missing dependencies, max iterations reached)
 #   2 - Gracefully stopped by user (--stop flag)
 
@@ -107,15 +107,15 @@ trap cleanup_interrupt INT
 # =============================================================================
 show_help() {
   cat << 'EOF'
-Ralph - Autonomous AI agent loop for completing PRD user stories
+Ralph - Autonomous AI agent loop for completing SOP implementation tasks
 
 USAGE:
   ralph.sh [OPTIONS] [path] [-- tool_args...]
 
 PATHS:
-  ralph/auth                     Directory containing ralph.json
-  ralph/auth/ralph.json          Explicit path to ralph.json
-  (none)                         Interactive chooser from ralph/*/ralph.json
+  planning/feature/                        Planning directory (looks for implementation/ralph.json)
+  planning/feature/implementation/ralph.json   Explicit path to ralph.json
+  (none)                                   Interactive chooser (scans for **/implementation/ralph.json)
 
 OPTIONS:
   -n, --number <N>       Maximum iterations to run (default: 50)
@@ -124,9 +124,9 @@ OPTIONS:
   --custom-prompt <file> Use a custom prompt file instead of the embedded default
   --eject-prompt         Create .agents/ralph.md prompt template for customization
   --next-prompt          Debug mode: show what would be sent to LLM without running it
-  --status               Show project status (stories, progress, metadata)
+  --status               Show project status (tasks, progress, metadata)
   --stop                 Signal Ralph to stop before the next iteration
-  --learn                Add learn section to prompt; runs learn-only if all stories complete
+  --learn                Add learn section to prompt; runs learn-only if all tasks complete
   --learn-now            Run only the learn prompt (absorb learnings into ./AGENTS.md)
   --worktree             Run in a git worktree (creates .worktrees/<feature>/)
   --no-color             Disable colors and emojis (also respects NO_COLOR env var)
@@ -134,58 +134,64 @@ OPTIONS:
   --                     Everything after -- is passed to the tool as additional arguments
 
 FLOW:
-  ┌─────────────────┐  ralph-prep skill  ┌─────────────────────┐    ralph.sh     ┌─────────────┐
-  │ plans/foo.md    │ ────────────────►  │  ralph/foo/         │ ──────────────► │ Agent Loop  │
-  │ (source PRD)    │     converts       │   - ralph.json      │    executes     │             │
-  └─────────────────┘                    │   - README.md       │                 └─────────────┘
-                                         │   - progress.txt    │
-                                         └─────────────────────┘
+  ┌────────────────────────┐  ralph-sop skill  ┌──────────────────────────────────────┐
+  │ planning/feature/      │ ───────────────►  │  planning/feature/implementation/   │
+  │   summary.md           │    generates       │    ralph.json   (execution tracker) │
+  │   design/*.md          │                    │    progress.md  (iteration log)     │
+  │   implementation/      │                    │    step01/task-01-*.code-task.md     │
+  │     plan.md            │                    └──────────────────────────────────────┘
+  │     step01/            │                                    │
+  │       task-01-*.md     │                             ralph.sh executes
+  └────────────────────────┘                                    ▼
+                                                      ┌─────────────────┐
+                                                      │   Agent Loop    │
+                                                      └─────────────────┘
 
 FAILURE HANDLING:
   Ralph detects rapid failures (iterations < 4 seconds) and exits after 5 consecutive
   quick failures. This prevents rate limit issues and catches configuration errors early.
 
 EXAMPLES:
-  ralph.sh                              # Interactive chooser
-  ralph.sh ralph/auth                   # Run specific project (by directory)
-  ralph.sh ralph/auth/ralph.json        # Run specific project (explicit path)
-  ralph.sh ralph/auth -n 5              # Run with max of 5 iterations (default 50)
-  ralph.sh -n 5 ralph/auth              # Flags can come before or after path
-  ralph.sh ralph/auth --next-prompt     # Debug: see prompt without running LLM
-  ralph.sh ralph/auth --status          # Show project status
-  ralph.sh ralph/auth --tool claude     # Run with Claude Code
-  ralph.sh ralph/auth --stop            # Stop a running Ralph project
-  ralph.sh ralph/auth --learn           # Normal execution + learn on final iteration
-  ralph.sh ralph/auth --learn-now       # Just run learn prompt, no tasks
-  ralph.sh ralph/auth --worktree        # Run in isolated git worktree (run multiple Ralphs on different plans in parallel)
-  ralph.sh --eject-prompt               # Create reusable prompt template for customization
-  ralph.sh --no-color ralph/auth        # Run without colors/emojis
+  ralph.sh                                            # Interactive chooser
+  ralph.sh planning/auth                              # Run by planning directory
+  ralph.sh planning/auth/implementation/ralph.json    # Run by explicit ralph.json path
+  ralph.sh planning/auth -n 5                         # Max 5 iterations (default 50)
+  ralph.sh -n 5 planning/auth                         # Flags can come before or after path
+  ralph.sh planning/auth --next-prompt                # Debug: see prompt without running LLM
+  ralph.sh planning/auth --status                     # Show project status
+  ralph.sh planning/auth --tool claude                # Run with Claude Code
+  ralph.sh planning/auth --stop                       # Stop a running Ralph project
+  ralph.sh planning/auth --learn                      # Normal execution + learn on final iteration
+  ralph.sh planning/auth --learn-now                  # Just run learn prompt, no tasks
+  ralph.sh planning/auth --worktree                   # Run in isolated git worktree
+  ralph.sh --eject-prompt                             # Create reusable prompt template
+  ralph.sh --no-color planning/auth                   # Run without colors/emojis
 
 GETTING STARTED:
-  1. Create a PRD (optional - use 'ralph-prd' skill or write manually):
-     > Use the ralph-prd skill to create a PRD for user authentication as discussed
-     This creates plans/PRD-auth.md
+  1. Create a planning directory using Agent SOP (pdd, code-task-generator SOPs)
+     or manually structure your planning/feature/ directory with:
+       summary.md, design/, implementation/step*/task-*.code-task.md
 
-  2. Convert to Ralph format using the 'ralph-prep' skill (REQUIRED):
-     > Use the ralph-prep skill to prepare plans/PRD-auth.md for Ralph
-     This creates ralph/auth/ with ralph.json, README.md, progress.txt
+  2. Generate the Ralph execution tracker using the 'ralph-sop' skill:
+     > Use the ralph-sop skill to prepare planning/auth for Ralph
+     This creates implementation/ralph.json and implementation/progress.md
 
   3. Run Ralph:
-     $ ./ralph.sh ralph/auth
+     $ ./ralph.sh planning/auth
 
 CUSTOMIZING THE PROMPT:
   Ralph kicks off each agent with a prompt. The prompt source is determined in this priority order:
   1. --custom-prompt <file> (explicit flag)
-  2. [ralph-dir]/.agents/ralph.md (project-local template, if exists)
+  2. <planning-dir>/.agents/ralph.md (project-local template, if exists)
   3. Embedded default prompt
 
   To customize for your project:
   1. Run: ./ralph.sh --eject-prompt to create .agents/ralph.md in your project
-  3. Edit .agents/ralph.md
-  4. Ralph will automatically use it - or copy it elsewhere and use --custom-prompt path/to/my/prompt.md
+  2. Edit .agents/ralph.md
+  3. Ralph will automatically use it - or copy it elsewhere and use --custom-prompt path/to/my/prompt.md
 
 EXIT CODES:
-  0 - All stories completed successfully
+  0 - All tasks completed successfully
   1 - Error occurred (invalid arguments, missing dependencies, max iterations reached)
   2 - Gracefully stopped by user (--stop flag)
 
@@ -294,14 +300,17 @@ while [[ $# -gt 0 ]]; do
       break
       ;;
     *)
-      # Assume it's a path to ralph.json or directory
+      # Assume it's a path to ralph.json or a planning directory
       if [[ -z "$RALPH_JSON" ]]; then
         if [[ -d "$1" ]]; then
-          # Directory given - look for ralph.json inside
-          if [[ -f "$1/ralph.json" ]]; then
+          # Directory given - look for implementation/ralph.json inside (planning dir)
+          # or ralph.json directly (implementation dir)
+          if [[ -f "$1/implementation/ralph.json" ]]; then
+            RALPH_JSON="$1/implementation/ralph.json"
+          elif [[ -f "$1/ralph.json" ]]; then
             RALPH_JSON="$1/ralph.json"
           else
-            echo -e "${RED}${E_ERROR} Error: No ralph.json found in $1${NC}"
+            echo -e "${RED}${E_ERROR} Error: No ralph.json found in $1 or $1/implementation/${NC}"
             exit 1
           fi
         elif [[ -f "$1" ]]; then
@@ -378,23 +387,18 @@ if ! command -v sponge &> /dev/null; then
   exit 1
 fi
 
-# Ensure ralph/.gitignore exists in non-worktree mode
-if [[ "$WORKTREE_FLAG" != true ]] && [[ -d "ralph" ]]; then
-  if [[ ! -f "ralph/.gitignore" ]]; then
-    echo "# Generated by ralph.sh - do not delete this file, but do modify to suit your needs" > "ralph/.gitignore"
-    echo "*/" >> "ralph/.gitignore"
-    echo -e "${DIM}Created ralph/.gitignore to ignore all ralph files by default${NC}"
-  fi
-fi
+# No auto-gitignore needed - planning files are part of the project
 
 # If no RALPH_JSON specified, show interactive chooser
 if [[ -z "$RALPH_JSON" ]] && [[ "$EJECT_PROMPT_FLAG" != true ]] && [[ "$STATUS_FLAG" != true ]]; then
-  # Find all ralph.json files
-  mapfile -t RALPH_FILES < <(find ralph -name "ralph.json" -type f 2>/dev/null | grep -v "archive/" | sort)
+  # Find all ralph.json files under implementation/ directories (excluding node_modules, .git, archive, .worktrees)
+  mapfile -t RALPH_FILES < <(find . -path "*/implementation/ralph.json" -type f \
+    ! -path "*/.git/*" ! -path "*/node_modules/*" ! -path "*/archive/*" ! -path "*/.worktrees/*" \
+    2>/dev/null | sed 's|^\./||' | sort)
   
   if [[ ${#RALPH_FILES[@]} -eq 0 ]]; then
-    echo -e "${RED}${E_ERROR} Error: No Ralph projects found in ralph/${NC}"
-    echo "Use the 'ralph' skill to convert a PRD to ralph.json first."
+    echo -e "${RED}${E_ERROR} Error: No Ralph projects found (searched for **/implementation/ralph.json)${NC}"
+    echo "Use the 'ralph-sop' skill to generate implementation/ralph.json from a planning directory."
     exit 1
   fi
   
@@ -407,8 +411,8 @@ if [[ -z "$RALPH_JSON" ]] && [[ "$EJECT_PROMPT_FLAG" != true ]] && [[ "$STATUS_F
   for i in "${!RALPH_FILES[@]}"; do
     file="${RALPH_FILES[$i]}"
     desc=$(jq -r '.description // "Unknown"' "$file" 2>/dev/null)
-    total=$(jq '.userStories | length' "$file" 2>/dev/null || echo "0")
-    complete=$(jq '[.userStories[] | select(.passes == true)] | length' "$file" 2>/dev/null || echo "0")
+    total=$(jq '.tasks | length' "$file" 2>/dev/null || echo "0")
+    complete=$(jq '[.tasks[] | select(.passes == true)] | length' "$file" 2>/dev/null || echo "0")
     
     num=$((i + 1))
     
@@ -449,15 +453,18 @@ if [[ -z "$RALPH_JSON" ]] && [[ "$EJECT_PROMPT_FLAG" != true ]] && [[ "$STATUS_F
   fi
 fi
 
-# Extract directory from ralph.json path
+# Extract directory paths from ralph.json path
+# RALPH_JSON lives at <planningDir>/implementation/ralph.json
+# PLANNING_DIR is the parent of implementation/
 if [[ -n "$RALPH_JSON" ]]; then
   # Convert to absolute path before any directory changes
   RALPH_JSON=$(cd "$(dirname "$RALPH_JSON")" && pwd)/$(basename "$RALPH_JSON")
-  RALPH_DIR=$(dirname "$RALPH_JSON")  # e.g., /full/path/to/ralph/auth
-  PROGRESS_FILE="$RALPH_DIR/progress.txt"
-  ARCHIVE_DIR="ralph/archive"
-  LAST_BRANCH_FILE="$RALPH_DIR/.last-branch"
-  STOP_FILE="$RALPH_DIR/.ralph-stop"
+  IMPL_DIR=$(dirname "$RALPH_JSON")                    # e.g., /full/path/planning/feature/implementation
+  PLANNING_DIR=$(dirname "$IMPL_DIR")                  # e.g., /full/path/planning/feature
+  PROGRESS_FILE="$IMPL_DIR/progress.md"
+  ARCHIVE_DIR="$(dirname "$PLANNING_DIR")/archive"     # sibling of the planning dir
+  LAST_BRANCH_FILE="$IMPL_DIR/.last-branch"
+  STOP_FILE="$IMPL_DIR/.ralph-stop"
 fi
 
 # Handle --worktree flag (must be before --stop so STOP_FILE path is correct)
@@ -467,7 +474,7 @@ if [[ "$WORKTREE_FLAG" == true ]]; then
     exit 1
   fi
   # Store original paths for setup_worktree (called after functions are defined)
-  ORIG_RALPH_DIR="$RALPH_DIR"
+  ORIG_PLANNING_DIR="$PLANNING_DIR"
   ORIG_RALPH_JSON="$RALPH_JSON"
 fi
 
@@ -488,14 +495,14 @@ init_progress_header() {
   local tool="$2"
   local tool_args="$3"
 
-  echo "# Ralph Progress Log"
-  echo "Started: $(date '+%Y-%m-%d %H:%M')"
+  echo "# Progress Log"
+  echo "Created: $(date '+%Y-%m-%d %H:%M')"
 
-  # Extract and add source from ralph.json if present
+  # Extract and add planning directory from ralph.json if present
   if [ -f "$ralph_json" ]; then
-    local source=$(jq -r '.source // empty' "$ralph_json" 2>/dev/null || echo "")
-    if [[ -n "$source" ]]; then
-      echo "Source PRD: $source"
+    local planning_dir=$(jq -r '.planningDir // empty' "$ralph_json" 2>/dev/null || echo "")
+    if [[ -n "$planning_dir" ]]; then
+      echo "Source: $planning_dir"
     fi
   fi
 
@@ -512,14 +519,15 @@ ensure_gitignore_worktrees() {
 
 # Setup git worktree for isolated execution
 setup_worktree() {
-  local abs_ralph_dir="$1"  # Absolute path to ralph dir
-  local abs_ralph_json="$2"  # Absolute path to ralph.json
+  local abs_planning_dir="$1"  # Absolute path to planning dir
+  local abs_ralph_json="$2"    # Absolute path to ralph.json
 
-  # Extract relative ralph path (e.g., /full/path/ralph/auth -> ralph/auth)
-  local rel_ralph_dir=$(echo "$abs_ralph_dir" | sed 's|.*/\(ralph/[^/]*\)$|\1|')
+  # Get the planning dir relative to project root
+  local project_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+  local rel_planning_dir="${abs_planning_dir#$project_root/}"
 
-  # Extract feature name from ralph_dir (e.g., ralph/auth -> auth)
-  local feature_name=$(basename "$abs_ralph_dir")
+  # Extract feature name from planning dir basename (e.g., planning/lot-tracking-woo -> lot-tracking-woo)
+  local feature_name=$(basename "$abs_planning_dir")
 
   # Read branch name from ralph.json
   local branch_name=$(jq -r '.branchName' "$abs_ralph_json")
@@ -556,8 +564,8 @@ setup_worktree() {
       git worktree add -b "$branch_name" "$WORKTREE_DIR"
     fi
 
-    # Copy ralph project files to worktree (only for NEW worktrees)
-    echo -e "${DIM}Copying ralph files to worktree...${NC}"
+    # Copy planning files to worktree (only for NEW worktrees)
+    echo -e "${DIM}Copying planning files to worktree...${NC}"
 
     # Verify source ralph.json exists before copying
     if [[ ! -f "$abs_ralph_json" ]]; then
@@ -566,31 +574,32 @@ setup_worktree() {
     fi
 
     # Create worktree directory structure using relative path
-    mkdir -p "$WORKTREE_DIR/$rel_ralph_dir"
+    mkdir -p "$WORKTREE_DIR/$rel_planning_dir"
 
     # Copy from absolute source path to worktree
-    cp -r "$abs_ralph_dir"/* "$WORKTREE_DIR/$rel_ralph_dir/" 2>/dev/null || cp -r "$abs_ralph_dir"/. "$WORKTREE_DIR/$rel_ralph_dir/"
-    rm -f "$WORKTREE_DIR/ralph/.last-branch"
+    cp -r "$abs_planning_dir"/* "$WORKTREE_DIR/$rel_planning_dir/" 2>/dev/null || cp -r "$abs_planning_dir"/. "$WORKTREE_DIR/$rel_planning_dir/"
+    rm -f "$WORKTREE_DIR/$rel_planning_dir/implementation/.last-branch"
 
     if [[ "$IGNORE_FLAG" == "true" ]]; then
-      # Create .gitignore in the ralph dir to prevent files from being tracked
-      echo "*" > "$WORKTREE_DIR/$rel_ralph_dir/.gitignore"
-      echo -e "${DIM}Added .gitignore to $rel_ralph_dir (ignoring ralph files)${NC}"
+      # Create .gitignore in the planning dir to prevent files from being tracked
+      echo "*" > "$WORKTREE_DIR/$rel_planning_dir/.gitignore"
+      echo -e "${DIM}Added .gitignore to $rel_planning_dir (ignoring planning files)${NC}"
     else
-      # Commit ralph files so each part is a clean atomic commit
+      # Commit planning files so each part is a clean atomic commit
       (
         cd "$WORKTREE_DIR"
-        rm -f ralph/.gitignore
-        git add ralph
+        git add "$rel_planning_dir"
         git commit -m "ralph: Add $feature_name project files before starting implementation"
         git show --stat
       )
     fi
   fi
 
-  # Update all paths to point to worktree (using relative paths within worktree)
-  RALPH_JSON="$WORKTREE_DIR/$rel_ralph_dir/ralph.json"
-  RALPH_DIR="$WORKTREE_DIR/$rel_ralph_dir"
+  # Update all paths to point to worktree (using absolute paths first)
+  local rel_impl_dir="$rel_planning_dir/implementation"
+  RALPH_JSON="$WORKTREE_DIR/$rel_impl_dir/ralph.json"
+  PLANNING_DIR="$WORKTREE_DIR/$rel_planning_dir"
+  IMPL_DIR="$WORKTREE_DIR/$rel_impl_dir"
 
   # Verify ralph.json exists in worktree
   if [[ ! -f "$RALPH_JSON" ]]; then
@@ -598,11 +607,11 @@ setup_worktree() {
     echo -e "${DIM}Expected at: $RALPH_JSON${NC}"
     exit 1
   fi
-  PROGRESS_FILE="$RALPH_DIR/progress.txt"
-  LEARNINGS_FILE="$RALPH_DIR/AGENTS.md"
-  LAST_BRANCH_FILE="$RALPH_DIR/.last-branch"
-  STOP_FILE="$RALPH_DIR/.ralph-stop"
-  ARCHIVE_DIR="$WORKTREE_DIR/ralph/archive"
+  PROGRESS_FILE="$IMPL_DIR/progress.md"
+  MEMORY_FILE="$PLANNING_DIR/memory.md"
+  LAST_BRANCH_FILE="$IMPL_DIR/.last-branch"
+  STOP_FILE="$IMPL_DIR/.ralph-stop"
+  ARCHIVE_DIR="$(dirname "$PLANNING_DIR")/archive"
 
   echo -e "${GREEN}${E_CHECK} Worktree ready:${NC} $WORKTREE_DIR"
 
@@ -619,59 +628,59 @@ setup_worktree() {
   }
 
   # Update paths to be relative to the worktree working directory
-  RALPH_JSON="$rel_ralph_dir/ralph.json"
-  RALPH_DIR="$rel_ralph_dir"
-  PROGRESS_FILE="$RALPH_DIR/progress.txt"
-  LEARNINGS_FILE="$RALPH_DIR/AGENTS.md"
-  LAST_BRANCH_FILE="$RALPH_DIR/.last-branch"
-  STOP_FILE="$RALPH_DIR/.ralph-stop"
-  ARCHIVE_DIR="ralph/archive"
+  RALPH_JSON="$rel_impl_dir/ralph.json"
+  PLANNING_DIR="$rel_planning_dir"
+  IMPL_DIR="$rel_impl_dir"
+  PROGRESS_FILE="$IMPL_DIR/progress.md"
+  MEMORY_FILE="$PLANNING_DIR/memory.md"
+  LAST_BRANCH_FILE="$IMPL_DIR/.last-branch"
+  STOP_FILE="$IMPL_DIR/.ralph-stop"
+  ARCHIVE_DIR="$(dirname "$rel_planning_dir")/archive"
 }
 
 # Generate the prompt with pre-computed variables
 # All variables are substituted at runtime before this function is called
 generate_prompt() {
   local tool="$1"
-  local story_id="$2"
-  local story_title="$3"
-  local story_description="$4"
-  local story_criteria="$5"
-  local primary_plan_path="$6"
-  local story_plan_path="$7"
-  local learnings_file_exists="$8"
-  local branch_name="$9"
-  local update_story_cmd="${10}"
-  local ralph_dir="${11}"
-  local ralph_json="${12}"
-  local progress_file="${13}"
-  local learnings_file="${14}"
-  local is_last_story="${15}"
-  local learn_flag="${16}"
-  local ignore_flag="${17}"
+  local task_id="$2"
+  local task_title="$3"
+  local task_source="$4"
+  local summary_path="$5"
+  local design_path="$6"
+  local memory_file_exists="$7"
+  local branch_name="$8"
+  local update_task_cmd="$9"
+  local planning_dir="${10}"
+  local ralph_json="${11}"
+  local progress_file="${12}"
+  local memory_file="${13}"
+  local is_last_task="${14}"
+  local learn_flag="${15}"
+  local ignore_flag="${16}"
   
   # Build the prompt
   cat << PROMPT_HEADER
 # Ralph Agent Task
 
-## Current Story: $story_id - $story_title
-
-$story_description
-
-### Acceptance Criteria
-$story_criteria
+## Current Task: $task_id - $task_title
 
 ### Context Files
-- Primary plan: \`$primary_plan_path\`
+- Task specification: \`$task_source\`
 PROMPT_HEADER
 
-  # Story plan line (only if story has source field)
-  if [[ -n "$story_plan_path" ]]; then
-    echo "- Story details: \`$story_plan_path\`"
+  # Design doc (only if present)
+  if [[ -n "$design_path" && "$design_path" != "null" ]]; then
+    echo "- Design document: \`$design_path\`"
   fi
 
-  # Learnings file reference (only if file exists and has >2 lines)
-  if [[ "$learnings_file_exists" == "true" ]]; then
-    echo "- Memory from previous iterations: \`$learnings_file\`"
+  # Summary (only if present)
+  if [[ -n "$summary_path" && "$summary_path" != "null" ]]; then
+    echo "- Project summary: \`$summary_path\`"
+  fi
+
+  # Memory file reference (only if file exists and has >2 lines)
+  if [[ "$memory_file_exists" == "true" ]]; then
+    echo "- Memory from previous iterations: \`$memory_file\`"
   fi
 
   cat << 'PROMPT_INSTRUCTIONS'
@@ -680,25 +689,27 @@ PROMPT_HEADER
 
 ## Instructions
 
-1. **Read context**: Load the Context Files listed above
+1. **Read the task spec**: Load the task specification file listed above. It contains the full description, technical requirements, acceptance criteria, and implementation approach.
 
-2. **Implement** the story, meeting all acceptance criteria
+2. **Read context docs**: The task spec references design documents and research files. Read them as directed by the task spec's "Reference Documentation" section.
 
-3. **Run quality checks** (typecheck, lint, test - whatever the project requires)
+3. **Implement** the task, meeting all acceptance criteria in the task spec.
 
-4. **Complete the story** - Do ALL of the following before committing:
-   a. Update ralph.json to mark story complete
-   b. Append progress entry to progress.txt
+4. **Run quality checks** (typecheck, lint, test - whatever the project requires)
+
+5. **Complete the task** - Do ALL of the following before committing:
+   a. Update ralph.json to mark task complete
+   b. Append progress entry to progress.md
 PROMPT_INSTRUCTIONS
 
-  echo "   c. Record learnings (if any) to \`$learnings_file\`"
+  echo "   c. Record learnings (if any) to \`$memory_file\`"
   cat << 'PROMPT_INSTRUCTIONS_CONT'
    d. Stage ALL changes (implementation + bookkeeping files)
 
-5. **Commit** with message starting:
+6. **Commit** with message starting:
 PROMPT_INSTRUCTIONS_CONT
 
-  echo "      \`feat: $story_id - $story_title\`"
+  echo "      \`feat: $task_id - $task_title\`"
   cat << 'PROMPT_INSTRUCTIONS2'
    
    This atomic commit ensures bookkeeping is never forgotten.
@@ -707,12 +718,12 @@ Commands:
 PROMPT_INSTRUCTIONS2
 
   echo "   \`\`\`bash"
-  echo "   # a. Mark story complete"
-  echo "   $update_story_cmd"
+  echo "   # a. Mark task complete"
+  echo "   $update_task_cmd"
   echo ""
   echo "   # b. Append progress"
   echo "   cat >> \"$progress_file\" << 'PROGRESS_ENTRY'"
-  echo "   ### [\$(date '+%Y-%m-%d %H:%M')] - $story_id"
+  echo "   ### [\$(date '+%Y-%m-%d %H:%M')] - $task_id"
   
   # Thread URL line (only for Amp)
   if [[ "$tool" == "amp" ]]; then
@@ -721,12 +732,12 @@ PROMPT_INSTRUCTIONS2
   
   echo "   Implemented: [1-2 sentence summary]"
   echo "   Files changed:"
-  echo "   - path/to/file.ts (created/modified/deleted)"
+  echo "   - path/to/file (created/modified/deleted)"
   echo "   ---"
   echo "   PROGRESS_ENTRY"
   echo ""
   echo "   # c. Record learnings (if any patterns/gotchas discovered)"
-  echo "   echo '[Your learning here]' >> \"$learnings_file\""
+  echo "   echo '- [Your learning here]' >> \"$memory_file\""
   echo "   \`\`\`"
 
   echo ""
@@ -739,36 +750,36 @@ Include Amp thread URL in progress log: https://ampcode.com/threads/$AMP_CURRENT
 AMP_THREAD_NOTE
   fi
 
-  # Cleanup section (only if last story)
-  if [[ "$is_last_story" == "true" ]]; then
+  # Cleanup section (only if last task)
+  if [[ "$is_last_task" == "true" ]]; then
     echo ""
-    echo "## Final Cleanup (Last Story!)"
+    echo "## Final Cleanup (Last Task!)"
     echo ""
-    echo "This is the last story. After completing it:"
+    echo "This is the last task. After completing it:"
     echo ""
     
     if [[ "$ignore_flag" == "true" ]]; then
       # If ignore flag is on, files are untracked via .gitignore, so no cleanup commit needed
       echo "Reply with: \`<promise>COMPLETE</promise>\`"
     else
-      # Standard cleanup: remove ralph files from index
+      # Standard cleanup: remove planning files from index
       echo "1. Run cleanup:"
       echo "   \`\`\`bash"
-      echo "   git rm --cached -rf \"$ralph_dir\""
-      echo "   git commit -m \"ralph: cleanup $ralph_dir working files\""
+      echo "   git rm --cached -rf \"$planning_dir\""
+      echo "   git commit -m \"ralph: cleanup $planning_dir working files\""
       echo "   \`\`\`"
       echo ""
       echo "2. Reply with: \`<promise>COMPLETE</promise>\`"
     fi
   fi
 
-  # Learn section (only if --learn flag and last story)
-  if [[ "$learn_flag" == "true" && "$is_last_story" == "true" ]]; then
+  # Learn section (only if --learn flag and last task)
+  if [[ "$learn_flag" == "true" && "$is_last_task" == "true" ]]; then
     cat << LEARN_SECTION
 
 ## Absorb Learnings
 
-Read \`$learnings_file\` and merge valuable learnings into \`./AGENTS.md\` (project root):
+Read \`$memory_file\` and merge valuable learnings into \`./AGENTS.md\` (project root):
 - Deduplicate with existing entries
 - Group related learnings together  
 - Remove feature-specific details that won't apply to future work
@@ -787,17 +798,17 @@ QUALITY_REQUIREMENTS
 
 # Generate learn-only prompt
 generate_learn_prompt() {
-  local learnings_file="$1"
-  local learnings_content="$2"
+  local memory_file="$1"
+  local memory_content="$2"
   
   cat << LEARN_PROMPT
 # Absorb Learnings
 
 Read the following learnings and merge them into \`./AGENTS.md\` (project root):
 
-## Learnings from $learnings_file
+## Learnings from $memory_file
 
-$learnings_content
+$memory_content
 
 ## Instructions
 
@@ -833,25 +844,22 @@ if [ "$EJECT_PROMPT_FLAG" = true ]; then
 <!-- Ralph Prompt Template
 
 Available variables (substituted at runtime):
-  $RALPH_DIR          - Ralph project directory (e.g., ralph/auth)
-  $RALPH_JSON         - Path to ralph.json
-  $PROGRESS_FILE      - Path to progress.txt
-  $LEARNINGS_FILE     - Path to AGENTS.md in ralph dir
+  $PLANNING_DIR       - Planning directory (e.g., planning/lot-tracking-woo)
+  $RALPH_JSON         - Path to ralph.json (e.g., planning/lot-tracking-woo/implementation/ralph.json)
+  $PROGRESS_FILE      - Path to progress.md
+  $MEMORY_FILE        - Path to memory.md (learnings file in planning dir)
   $BRANCH_NAME        - Git branch name
-  $STORY_ID           - Current story ID (e.g., US-001)
-  $STORY_TITLE        - Current story title
-  $STORY_DESCRIPTION  - Current story description (not directly available in template)
-  $STORY_CRITERIA     - Acceptance criteria as bullet list (not directly available)
-  $PRIMARY_PLAN_PATH  - Path to README.md
-  $STORY_PLAN_PATH    - Path to story-specific plan (if exists)
-  $UPDATE_STORY_CMD   - Command to mark story complete (not directly available)
+  $TASK_ID            - Current task ID (e.g., S01-T01)
+  $TASK_TITLE         - Current task title
+  $TASK_SOURCE        - Path to the .code-task.md file
+  $SUMMARY_PATH       - Path to summary.md (if exists)
+  $DESIGN_PATH        - Path to design document (if exists)
 
-Note: Some variables like $STORY_DESCRIPTION, $STORY_CRITERIA, and $UPDATE_STORY_CMD
-are only available in the embedded prompt, not in custom templates. Custom templates 
-receive the simpler variables via sed substitution.
+Note: $UPDATE_TASK_CMD is only available in the embedded prompt, not in custom templates.
+Custom templates receive the simpler variables via sed substitution.
 
 To use this template:
-  1. Copy to your ralph project: cp .agents/ralph.md ralph/myproject/.agents/
+  1. Copy to your planning dir: cp .agents/ralph.md planning/myproject/.agents/
   2. Edit as needed
   3. Ralph will automatically use it when running that project
 
@@ -859,70 +867,73 @@ To use this template:
 
 # Ralph Agent Task
 
-## Current Story: $STORY_ID - $STORY_TITLE
+## Current Task: $TASK_ID - $TASK_TITLE
 
-Read the story details from ralph.json:
+Read the task details from ralph.json:
 ```bash
-jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSON"
+jq '[.tasks[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSON"
 ```
 
 ### Context Files
-- Primary plan: `$PRIMARY_PLAN_PATH`
-- Story details: `$STORY_PLAN_PATH`
-- Learnings: `$LEARNINGS_FILE`
+- Task specification: `$TASK_SOURCE`
+- Design document: `$DESIGN_PATH`
+- Project summary: `$SUMMARY_PATH`
+- Memory: `$MEMORY_FILE`
 
 ---
 
 ## Instructions
 
-1. **Read context**: Load the plan files and story details from ralph.json
+1. **Read the task spec**: Load the task specification file. It contains description, requirements, acceptance criteria, and implementation approach.
 
-2. **Implement** the story, meeting all acceptance criteria
+2. **Read context docs**: The task spec references design documents and research files. Read them as directed.
 
-3. **Run quality checks** (typecheck, lint, test - whatever the project requires)
+3. **Implement** the task, meeting all acceptance criteria in the task spec.
 
-4. **Complete the story** - Do ALL of the following before committing:
-   a. Update ralph.json to mark story complete
-   b. Append progress entry to progress.txt
-   c. Record learnings (if any) to `$LEARNINGS_FILE`
+4. **Run quality checks** (typecheck, lint, test - whatever the project requires)
+
+5. **Complete the task** - Do ALL of the following before committing:
+   a. Update ralph.json to mark task complete
+   b. Append progress entry to progress.md
+   c. Record learnings (if any) to `$MEMORY_FILE`
    d. Stage ALL changes (implementation + bookkeeping files)
 
-5. **Commit** with message starting: `feat: $STORY_ID - $STORY_TITLE`
+6. **Commit** with message starting: `feat: $TASK_ID - $TASK_TITLE`
    
    This atomic commit ensures bookkeeping is never forgotten.
    
 Commands:
    ```bash
-   # a. Mark story complete
-   jq '(.userStories[] | select(.id == "'\"$STORY_ID\"'") | .passes) = true' "$RALPH_JSON" > "$RALPH_JSON.tmp" && mv "$RALPH_JSON.tmp" "$RALPH_JSON"
+   # a. Mark task complete
+   jq '(.tasks[] | select(.id == "'\"$TASK_ID\"'") | .passes) = true' "$RALPH_JSON" | sponge "$RALPH_JSON"
    
    # b. Append progress
    cat >> "$PROGRESS_FILE" << 'PROGRESS_ENTRY'
-   ### [$(date '+%Y-%m-%d %H:%M')] - $STORY_ID
+   ### [$(date '+%Y-%m-%d %H:%M')] - $TASK_ID
    Implemented: [1-2 sentence summary]
    Files changed:
-   - path/to/file.ts (created/modified/deleted)
+   - path/to/file (created/modified/deleted)
    ---
    PROGRESS_ENTRY
    
    # c. Record learnings (if any patterns/gotchas discovered)
-   echo '[Your learning here]' >> "$LEARNINGS_FILE"
+   echo '- [Your learning here]' >> "$MEMORY_FILE"
    ```
 
 ## Stop Condition
 
-After completing a user story, check if ALL stories have `passes: true`:
+After completing a task, check if ALL tasks have `passes: true`:
 
 ```bash
-jq 'all(.userStories[]; .passes == true)' "$RALPH_JSON"
+jq 'all(.tasks[]; .passes == true)' "$RALPH_JSON"
 ```
 
-If ALL stories are complete:
+If ALL tasks are complete:
 
 1. **Perform cleanup commit**:
    ```bash
-   git rm --cached -rf "$RALPH_DIR"
-   git commit -m "chore: cleanup $RALPH_DIR working files"
+   git rm --cached -rf "$PLANNING_DIR"
+   git commit -m "ralph: cleanup $PLANNING_DIR working files"
    ```
 
 2. Reply with: `<promise>COMPLETE</promise>`
@@ -936,7 +947,7 @@ TEMPLATE_EOF
   echo -e "${GREEN}${E_CHECK} Created${NC} $EJECT_FILE"
   echo ""
   echo "To use this template:"
-  echo "  1. Copy to your ralph project: cp $EJECT_FILE ralph/myproject/.agents/"
+  echo "  1. Copy to your planning dir: cp $EJECT_FILE planning/myproject/.agents/"
   echo "  2. Edit as needed"
   echo "  3. Ralph will automatically use it"
   exit 0
@@ -946,38 +957,37 @@ fi
 precompute_variables() {
   # Pre-compute from ralph.json
   BRANCH_NAME=$(jq -r '.branchName' "$RALPH_JSON")
-  PRIMARY_PLAN_PATH=$(jq -r '.source' "$RALPH_JSON")
+  SUMMARY_PATH=$(jq -r '.summary // empty' "$RALPH_JSON")
+  DESIGN_PATH=$(jq -r '.design // empty' "$RALPH_JSON")
 
-  # Current story details
-  CURRENT_STORY=$(jq '[.userStories[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSON")
-  STORY_ID=$(echo "$CURRENT_STORY" | jq -r '.id')
-  STORY_TITLE=$(echo "$CURRENT_STORY" | jq -r '.title')
-  STORY_DESCRIPTION=$(echo "$CURRENT_STORY" | jq -r '.description')
-  STORY_CRITERIA=$(echo "$CURRENT_STORY" | jq -r '.acceptanceCriteria[]' | sed 's/^/- /')
-  STORY_PLAN_PATH=$(echo "$CURRENT_STORY" | jq -r '.source // empty')
+  # Current task details (first incomplete by priority)
+  CURRENT_TASK=$(jq '[.tasks[] | select(.passes == false)] | min_by(.priority)' "$RALPH_JSON")
+  TASK_ID=$(echo "$CURRENT_TASK" | jq -r '.id')
+  TASK_TITLE=$(echo "$CURRENT_TASK" | jq -r '.title')
+  TASK_SOURCE=$(echo "$CURRENT_TASK" | jq -r '.source')
 
   # Counts
-  STORIES_REMAINING=$(jq '[.userStories[] | select(.passes == false)] | length' "$RALPH_JSON")
-  IS_LAST_STORY=$([[ "$STORIES_REMAINING" -eq 1 ]] && echo "true" || echo "false")
+  TASKS_REMAINING=$(jq '[.tasks[] | select(.passes == false)] | length' "$RALPH_JSON")
+  IS_LAST_TASK=$([[ "$TASKS_REMAINING" -eq 1 ]] && echo "true" || echo "false")
 
-  # Learnings file
-  LEARNINGS_FILE="$RALPH_DIR/AGENTS.md"
-  # Check if learnings file exists and has meaningful content (>2 lines)
-  if [[ -f "$LEARNINGS_FILE" ]] && [[ $(wc -l < "$LEARNINGS_FILE") -gt 2 ]]; then
-    LEARNINGS_FILE_EXISTS="true"
+  # Memory file (learnings)
+  MEMORY_FILE="$PLANNING_DIR/memory.md"
+  # Check if memory file exists and has meaningful content (>2 lines)
+  if [[ -f "$MEMORY_FILE" ]] && [[ $(wc -l < "$MEMORY_FILE") -gt 2 ]]; then
+    MEMORY_FILE_EXISTS="true"
   else
-    LEARNINGS_FILE_EXISTS="false"
+    MEMORY_FILE_EXISTS="false"
   fi
 
   # Pre-built update command
-  UPDATE_STORY_CMD="jq '(.userStories[] | select(.id == \"$STORY_ID\") | .passes) = true' \"$RALPH_JSON\" > \"$RALPH_JSON.tmp\" && mv \"$RALPH_JSON.tmp\" \"$RALPH_JSON\""
+  UPDATE_TASK_CMD="jq '(.tasks[] | select(.id == \"$TASK_ID\") | .passes) = true' \"$RALPH_JSON\" | sponge \"$RALPH_JSON\""
 }
 
-# Auto-create AGENTS.md function
-ensure_learnings_file() {
-  if [[ ! -f "$LEARNINGS_FILE" ]]; then
+# Auto-create memory.md (learnings file)
+ensure_memory_file() {
+  if [[ ! -f "$MEMORY_FILE" ]]; then
     FEATURE_NAME=$(jq -r '.description // "Feature"' "$RALPH_JSON")
-    cat > "$LEARNINGS_FILE" << EOF
+    cat > "$MEMORY_FILE" << EOF
 # $FEATURE_NAME - Learnings
 
 EOF
@@ -1083,7 +1093,7 @@ show_final_wall_time() {
 
 # Actually setup worktree now that functions are defined
 if [[ "$WORKTREE_FLAG" == true ]]; then
-  setup_worktree "$ORIG_RALPH_DIR" "$ORIG_RALPH_JSON"
+  setup_worktree "$ORIG_PLANNING_DIR" "$ORIG_RALPH_JSON"
 fi
 
 # Handle --next-prompt flag
@@ -1097,68 +1107,74 @@ if [[ "$NEXT_PROMPT_FLAG" = true ]]; then
   # Pre-compute all variables
   precompute_variables
   
-  # Check if all stories already complete
-  ALL_COMPLETE=$(jq 'all(.userStories[]; .passes == true)' "$RALPH_JSON" 2>/dev/null || echo "false")
+  # Check if all tasks already complete
+  ALL_COMPLETE=$(jq 'all(.tasks[]; .passes == true)' "$RALPH_JSON" 2>/dev/null || echo "false")
   
   if [[ "$ALL_COMPLETE" == "true" ]]; then
     if [[ "$LEARN_FLAG" == "true" || "$LEARN_NOW_FLAG" == "true" ]]; then
       echo -e "${CYAN}========== LEARN PROMPT ==========${NC}" >&2
-      generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS"
+      generate_learn_prompt "$MEMORY_FILE" "$(cat "$MEMORY_FILE" 2>/dev/null)"
     else
-      echo -e "${GREEN}${E_PARTY} All stories complete! Nothing to do.${NC}" >&2
+      echo -e "${GREEN}${E_PARTY} All tasks complete! Nothing to do.${NC}" >&2
     fi
     exit 0
   fi
   
   # Handle --learn-now (just show learn prompt)
   if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
-    if [[ -z "$CODEBASE_PATTERNS" ]]; then
-      echo -e "${RED}${E_ERROR} Error: No learnings file found or file is empty at $LEARNINGS_FILE${NC}" >&2
+    if [[ ! -f "$MEMORY_FILE" ]] || [[ ! -s "$MEMORY_FILE" ]]; then
+      echo -e "${RED}${E_ERROR} Error: No memory file found or file is empty at $MEMORY_FILE${NC}" >&2
       exit 1
     fi
     echo -e "${CYAN}========== LEARN PROMPT ==========${NC}" >&2
-    generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS"
+    generate_learn_prompt "$MEMORY_FILE" "$(cat "$MEMORY_FILE")"
     exit 0
   fi
   
   echo -e "${CYAN}========== PROMPT (with pre-computed variables) ==========${NC}" >&2
   # Show the prompt with all variables
   if [[ -n "$CUSTOM_PROMPT" ]]; then
-    # For custom prompts, still use sed substitution
-    sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
+    # For custom prompts, use sed substitution
+    sed -e "s|\\\$PLANNING_DIR|$PLANNING_DIR|g" \
         -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
         -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g" \
-        -e "s|\\\$LEARNINGS_FILE|$LEARNINGS_FILE|g" \
+        -e "s|\\\$MEMORY_FILE|$MEMORY_FILE|g" \
         -e "s|\\\$BRANCH_NAME|$BRANCH_NAME|g" \
-        -e "s|\\\$STORY_ID|$STORY_ID|g" \
-        -e "s|\\\$STORY_TITLE|$STORY_TITLE|g" \
+        -e "s|\\\$TASK_ID|$TASK_ID|g" \
+        -e "s|\\\$TASK_TITLE|$TASK_TITLE|g" \
+        -e "s|\\\$TASK_SOURCE|$TASK_SOURCE|g" \
+        -e "s|\\\$SUMMARY_PATH|${SUMMARY_PATH:---none--}|g" \
+        -e "s|\\\$DESIGN_PATH|${DESIGN_PATH:---none--}|g" \
         "$CUSTOM_PROMPT"
-  elif [[ -f "$RALPH_DIR/.agents/ralph.md" ]]; then
-    sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
+  elif [[ -f "$PLANNING_DIR/.agents/ralph.md" ]]; then
+    sed -e "s|\\\$PLANNING_DIR|$PLANNING_DIR|g" \
         -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
         -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g" \
-        -e "s|\\\$LEARNINGS_FILE|$LEARNINGS_FILE|g" \
+        -e "s|\\\$MEMORY_FILE|$MEMORY_FILE|g" \
         -e "s|\\\$BRANCH_NAME|$BRANCH_NAME|g" \
-        -e "s|\\\$STORY_ID|$STORY_ID|g" \
-        -e "s|\\\$STORY_TITLE|$STORY_TITLE|g" \
-        "$RALPH_DIR/.agents/ralph.md"
+        -e "s|\\\$TASK_ID|$TASK_ID|g" \
+        -e "s|\\\$TASK_TITLE|$TASK_TITLE|g" \
+        -e "s|\\\$TASK_SOURCE|$TASK_SOURCE|g" \
+        -e "s|\\\$SUMMARY_PATH|${SUMMARY_PATH:---none--}|g" \
+        -e "s|\\\$DESIGN_PATH|${DESIGN_PATH:---none--}|g" \
+        "$PLANNING_DIR/.agents/ralph.md"
   else
     generate_prompt "$TOOL" \
-      "$STORY_ID" \
-      "$STORY_TITLE" \
-      "$STORY_DESCRIPTION" \
-      "$STORY_CRITERIA" \
-      "$PRIMARY_PLAN_PATH" \
-      "$STORY_PLAN_PATH" \
-      "$LEARNINGS_FILE_EXISTS" \
+      "$TASK_ID" \
+      "$TASK_TITLE" \
+      "$TASK_SOURCE" \
+      "$SUMMARY_PATH" \
+      "$DESIGN_PATH" \
+      "$MEMORY_FILE_EXISTS" \
       "$BRANCH_NAME" \
-      "$UPDATE_STORY_CMD" \
-      "$RALPH_DIR" \
+      "$UPDATE_TASK_CMD" \
+      "$PLANNING_DIR" \
       "$RALPH_JSON" \
       "$PROGRESS_FILE" \
-      "$LEARNINGS_FILE" \
-      "$IS_LAST_STORY" \
-      "$LEARN_FLAG"
+      "$MEMORY_FILE" \
+      "$IS_LAST_TASK" \
+      "$LEARN_FLAG" \
+      "$IGNORE_FLAG"
   fi
   
   exit 0
@@ -1175,43 +1191,51 @@ if [[ "$STATUS_FLAG" = true ]]; then
   PROJECT=$(jq -r '.project // "Unknown"' "$RALPH_JSON")
   DESCRIPTION=$(jq -r '.description // "No description"' "$RALPH_JSON")
   BRANCH_NAME=$(jq -r '.branchName // "Unknown"' "$RALPH_JSON")
-  SOURCE_PRD=$(jq -r '.source // "Unknown"' "$RALPH_JSON")
+  PLANNING_DIR_DISPLAY=$(jq -r '.planningDir // "Unknown"' "$RALPH_JSON")
   
-  # Get started date from progress.txt if it exists
+  # Get started date from progress.md if it exists
   STARTED=""
   if [[ -f "$PROGRESS_FILE" ]]; then
-    STARTED=$(grep -m1 "^Started:" "$PROGRESS_FILE" 2>/dev/null | sed 's/Started: //' || echo "")
+    STARTED=$(grep -m1 "^Created:" "$PROGRESS_FILE" 2>/dev/null | sed 's/Created: //' || echo "")
   fi
   
-  # Count stories
-  TOTAL_STORIES=$(jq '.userStories | length' "$RALPH_JSON")
-  COMPLETE_STORIES=$(jq '[.userStories[] | select(.passes == true)] | length' "$RALPH_JSON")
-  PERCENT=$((COMPLETE_STORIES * 100 / TOTAL_STORIES))
+  # Count tasks
+  TOTAL_TASKS=$(jq '.tasks | length' "$RALPH_JSON")
+  COMPLETE_TASKS=$(jq '[.tasks[] | select(.passes == true)] | length' "$RALPH_JSON")
+  PERCENT=$((COMPLETE_TASKS * 100 / TOTAL_TASKS))
   
   # Print header
   echo ""
-  echo -e "${CYAN}${E_CHART} Ralph Status: ${BOLD}$RALPH_DIR${NC}"
+  echo -e "${CYAN}${E_CHART} Ralph Status: ${BOLD}$PLANNING_DIR_DISPLAY${NC}"
   echo -e "${DIM}═════════════════════════════════════════════════════════════════════════════${NC}"
   echo ""
-  echo -e "  ${DIM}Project:${NC}     $PROJECT"
-  echo -e "  ${DIM}Description:${NC} $DESCRIPTION"
-  echo -e "  ${DIM}Branch:${NC}      $BRANCH_NAME"
-  echo -e "  ${DIM}Source PRD:${NC}  $SOURCE_PRD"
+  echo -e "  ${DIM}Project:${NC}      $PROJECT"
+  echo -e "  ${DIM}Description:${NC}  $DESCRIPTION"
+  echo -e "  ${DIM}Branch:${NC}       $BRANCH_NAME"
+  echo -e "  ${DIM}Planning dir:${NC} $PLANNING_DIR_DISPLAY"
   if [[ -n "$STARTED" ]]; then
-    echo -e "  ${DIM}Started:${NC}     $STARTED"
+    echo -e "  ${DIM}Started:${NC}      $STARTED"
   fi
   echo ""
   echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────${NC}"
-  echo -e "  ${BOLD}User Stories${NC}"
+  echo -e "  ${BOLD}Tasks${NC}"
   echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────${NC}"
   echo ""
   
-  # Print each story
-  jq -r '.userStories[] | "\(.passes)\t\(.id)\t\(.title)"' "$RALPH_JSON" | while IFS=$'\t' read -r passes id title; do
+  # Print each task grouped by step
+  LAST_STEP=""
+  jq -r '.tasks[] | "\(.passes)\t\(.id)\t\(.title)\t\(.step)"' "$RALPH_JSON" | while IFS=$'\t' read -r passes id title step; do
+    if [[ "$step" != "$LAST_STEP" ]]; then
+      if [[ -n "$LAST_STEP" ]]; then
+        echo ""
+      fi
+      echo -e "  ${DIM}Step $step${NC}"
+      LAST_STEP="$step"
+    fi
     if [[ "$passes" == "true" ]]; then
-      echo -e "  ${GREEN}${E_BOX_CHECK}${NC} ${DIM}$id${NC} - $title"
+      echo -e "    ${GREEN}${E_BOX_CHECK}${NC} ${DIM}$id${NC} - $title"
     else
-      echo -e "  ${E_BOX_EMPTY} ${DIM}$id${NC} - $title"
+      echo -e "    ${E_BOX_EMPTY} ${DIM}$id${NC} - $title"
     fi
   done
   
@@ -1220,11 +1244,11 @@ if [[ "$STATUS_FLAG" = true ]]; then
   
   # Print progress summary with color based on completion
   if [[ "$PERCENT" -eq 100 ]]; then
-    echo -e "  ${GREEN}${E_PARTY} Progress: $COMPLETE_STORIES/$TOTAL_STORIES stories complete (${PERCENT}%)${NC}"
+    echo -e "  ${GREEN}${E_PARTY} Progress: $COMPLETE_TASKS/$TOTAL_TASKS tasks complete (${PERCENT}%)${NC}"
   elif [[ "$PERCENT" -ge 50 ]]; then
-    echo -e "  ${CYAN}Progress: $COMPLETE_STORIES/$TOTAL_STORIES stories complete (${PERCENT}%)${NC}"
+    echo -e "  ${CYAN}Progress: $COMPLETE_TASKS/$TOTAL_TASKS tasks complete (${PERCENT}%)${NC}"
   else
-    echo -e "  Progress: $COMPLETE_STORIES/$TOTAL_STORIES stories complete (${PERCENT}%)"
+    echo -e "  Progress: $COMPLETE_TASKS/$TOTAL_TASKS tasks complete (${PERCENT}%)"
   fi
   
   echo -e "${DIM}═════════════════════════════════════════════════════════════════════════════${NC}"
@@ -1236,7 +1260,7 @@ fi
 # Validate ralph.json exists
 if [[ -z "$RALPH_JSON" ]] || [[ ! -f "$RALPH_JSON" ]]; then
   echo -e "${RED}${E_ERROR} Error: ralph.json not found.${NC}"
-  echo "Use the 'ralph' skill to convert a PRD to ralph.json first."
+  echo "Use the 'ralph-sop' skill to generate implementation/ralph.json from a planning directory."
   exit 1
 fi
 
@@ -1276,8 +1300,8 @@ if [ ! -f "$PROGRESS_FILE" ]; then
   init_progress_header "$RALPH_JSON" "$TOOL" "${TOOL_ARGS[*]}" > "$PROGRESS_FILE"
 fi
 
-# Initialize learnings file path (will be created on first task)
-LEARNINGS_FILE="$RALPH_DIR/AGENTS.md"
+# Initialize memory file path (will be created on first task)
+MEMORY_FILE="$PLANNING_DIR/memory.md"
 
 # Function to start OpenCode server (called when needed)
 start_opencode_server() {
@@ -1320,8 +1344,8 @@ start_opencode_server() {
 
 # Handle --learn-now flag (just run learn prompt, no tasks)
 if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
-  if [[ ! -f "$LEARNINGS_FILE" ]] || [[ ! -s "$LEARNINGS_FILE" ]]; then
-    echo -e "${RED}${E_ERROR} Error: No learnings file found at $LEARNINGS_FILE${NC}"
+  if [[ ! -f "$MEMORY_FILE" ]] || [[ ! -s "$MEMORY_FILE" ]]; then
+    echo -e "${RED}${E_ERROR} Error: No memory file found at $MEMORY_FILE${NC}"
     exit 1
   fi
   
@@ -1331,19 +1355,19 @@ if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
   # Initialize wall time tracking
   RALPH_START_TIME=$(date +%s)
   
-  CODEBASE_PATTERNS=$(cat "$LEARNINGS_FILE")
-  PROMPT=$(generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS")
+  MEMORY_CONTENT=$(cat "$MEMORY_FILE")
+  PROMPT=$(generate_learn_prompt "$MEMORY_FILE" "$MEMORY_CONTENT")
 
   # Debug: Write prompt to file for inspection
   if [[ -n "$DEBUG" ]]; then
-    DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
+    DEBUG_PROMPT_FILE="$IMPL_DIR/DEBUG-generated-prompt.md"
     {
       echo "# Debug: Learn-Only Prompt"
       echo ""
       echo "## Environment Info"
       echo "- Current directory: $(pwd)"
-      echo "- RALPH_DIR: $RALPH_DIR"
-      echo "- LEARNINGS_FILE: $LEARNINGS_FILE"
+      echo "- PLANNING_DIR: $PLANNING_DIR"
+      echo "- MEMORY_FILE: $MEMORY_FILE"
       echo ""
       echo "---"
       echo ""
@@ -1407,8 +1431,8 @@ if [[ "$LEARN_NOW_FLAG" == "true" ]]; then
 fi
 
 # Check for project-local prompt template and show message once
-if [[ -z "$CUSTOM_PROMPT" ]] && [[ -f "$RALPH_DIR/.agents/ralph.md" ]]; then
-  echo -e "${CYAN}${E_FILE} Using project-local prompt:${NC} $RALPH_DIR/.agents/ralph.md"
+if [[ -z "$CUSTOM_PROMPT" ]] && [[ -f "$PLANNING_DIR/.agents/ralph.md" ]]; then
+  echo -e "${CYAN}${E_FILE} Using project-local prompt:${NC} $PLANNING_DIR/.agents/ralph.md"
 fi
 
 # Set up scrolling region for monitor (reserve line 1 for status bar)
@@ -1419,7 +1443,7 @@ fi
 
 echo ""
 echo -e "${CYAN}${E_ROCKET} Starting Ralph${NC}"
-echo -e "   ${DIM}Project:${NC}        ${ORIG_RALPH_DIR:-$RALPH_DIR}"
+echo -e "   ${DIM}Project:${NC}        ${ORIG_PLANNING_DIR:-$PLANNING_DIR}"
 
 # Start OpenCode server if using opencode (but NOT if worktree mode - will start later)
 if [[ "$WORKTREE_FLAG" != true ]]; then
@@ -1440,7 +1464,7 @@ else
 fi
 
 echo -e "   ${DIM}Max iterations:${NC} $MAX_ITERATIONS"
-if [[ -n "$ORIG_RALPH_DIR" ]]; then
+if [[ -n "$ORIG_PLANNING_DIR" ]]; then
   echo -e "   ${DIM}Working dir:${NC}    $(pwd)"
 fi
 
@@ -1490,27 +1514,27 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     exit 2
   fi
 
-  # Check if all stories complete
-  ALL_COMPLETE=$(jq 'all(.userStories[]; .passes == true)' "$RALPH_JSON" 2>/dev/null || echo "false")
+  # Check if all tasks complete
+  ALL_COMPLETE=$(jq 'all(.tasks[]; .passes == true)' "$RALPH_JSON" 2>/dev/null || echo "false")
   if [ "$ALL_COMPLETE" = "true" ]; then
     # If --learn flag and all complete, run learn prompt
     if [[ "$LEARN_FLAG" == "true" ]]; then
-      if [[ -f "$LEARNINGS_FILE" ]] && [[ -s "$LEARNINGS_FILE" ]]; then
+      if [[ -f "$MEMORY_FILE" ]] && [[ -s "$MEMORY_FILE" ]]; then
         echo ""
-        echo -e "${CYAN}${E_BOOK} All stories complete. Running learn prompt...${NC}"
-        CODEBASE_PATTERNS=$(cat "$LEARNINGS_FILE")
-        PROMPT=$(generate_learn_prompt "$LEARNINGS_FILE" "$CODEBASE_PATTERNS")
+        echo -e "${CYAN}${E_BOOK} All tasks complete. Running learn prompt...${NC}"
+        MEMORY_CONTENT=$(cat "$MEMORY_FILE")
+        PROMPT=$(generate_learn_prompt "$MEMORY_FILE" "$MEMORY_CONTENT")
 
         # Debug: Write prompt to file for inspection
         if [[ -n "$DEBUG" ]]; then
-          DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
+          DEBUG_PROMPT_FILE="$IMPL_DIR/DEBUG-generated-prompt.md"
           {
             echo "# Debug: Learn Iteration Prompt"
             echo ""
             echo "## Environment Info"
             echo "- Current directory: $(pwd)"
-            echo "- RALPH_DIR: $RALPH_DIR"
-            echo "- LEARNINGS_FILE: $LEARNINGS_FILE"
+            echo "- PLANNING_DIR: $PLANNING_DIR"
+            echo "- MEMORY_FILE: $MEMORY_FILE"
             echo ""
             echo "---"
             echo ""
@@ -1569,7 +1593,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
       fi
     fi
     echo ""
-    echo -e "${GREEN}${E_PARTY} Ralph already completed! All stories pass.${NC}"
+    echo -e "${GREEN}${E_PARTY} Ralph already completed! All tasks pass.${NC}"
     show_final_wall_time
     exit 0
   fi
@@ -1577,71 +1601,72 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   # Pre-compute all variables for this iteration
   precompute_variables
   
-  # Ensure learnings file exists
-  ensure_learnings_file
+  # Ensure memory file exists
+  ensure_memory_file
 
   echo ""
   echo -e "${BLUE}╔═════════════════════════════════════════════════════════════════════════════╗${NC}"
   echo -e "${BLUE}║${NC} ${E_LOOP} ${BOLD}Ralph Iteration $i of $MAX_ITERATIONS${NC} ${DIM}($TOOL)${NC}"
-  echo -e "${BLUE}║${NC} ${E_FOLDER} ${DIM}Project:${NC} $RALPH_DIR"
+  echo -e "${BLUE}║${NC} ${E_FOLDER} ${DIM}Project:${NC} $PLANNING_DIR"
   if [[ "$WORKTREE_FLAG" == true ]]; then
     echo -e "${BLUE}║${NC} ${E_FOLDER} ${DIM}Worktree:${NC} $WORKTREE_DIR_RELATIVE"
   fi
-  echo -e "${BLUE}║${NC} ${E_MEMO} ${DIM}Story:${NC}   $STORY_ID - $STORY_TITLE"
+  echo -e "${BLUE}║${NC} ${E_MEMO} ${DIM}Task:${NC}    $TASK_ID - $TASK_TITLE"
   echo -e "${BLUE}╚═════════════════════════════════════════════════════════════════════════════╝${NC}"
 
   # Generate the prompt - priority: --custom-prompt > .agents/ralph.md > embedded default
   if [[ -n "$CUSTOM_PROMPT" ]]; then
-    PROMPT=$(sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
+    PROMPT=$(sed -e "s|\\\$PLANNING_DIR|$PLANNING_DIR|g" \
                  -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
                  -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g" \
-                 -e "s|\\\$LEARNINGS_FILE|$LEARNINGS_FILE|g" \
-                 -e "s|\\\$PRIMARY_PLAN_PATH|$PRIMARY_PLAN_PATH|g" \
-                 -e "s|\\\$STORY_PLAN_PATH|${STORY_PLAN_PATH:---none--}|g" \
+                 -e "s|\\\$MEMORY_FILE|$MEMORY_FILE|g" \
                  -e "s|\\\$BRANCH_NAME|$BRANCH_NAME|g" \
-                 -e "s|\\\$STORY_ID|$STORY_ID|g" \
-                 -e "s|\\\$STORY_TITLE|$STORY_TITLE|g" \
+                 -e "s|\\\$TASK_ID|$TASK_ID|g" \
+                 -e "s|\\\$TASK_TITLE|$TASK_TITLE|g" \
+                 -e "s|\\\$TASK_SOURCE|$TASK_SOURCE|g" \
+                 -e "s|\\\$SUMMARY_PATH|${SUMMARY_PATH:---none--}|g" \
+                 -e "s|\\\$DESIGN_PATH|${DESIGN_PATH:---none--}|g" \
                  "$CUSTOM_PROMPT")
-  elif [[ -f "$RALPH_DIR/.agents/ralph.md" ]]; then
-     PROMPT=$(sed -e "s|\\\$RALPH_DIR|$RALPH_DIR|g" \
+  elif [[ -f "$PLANNING_DIR/.agents/ralph.md" ]]; then
+     PROMPT=$(sed -e "s|\\\$PLANNING_DIR|$PLANNING_DIR|g" \
                  -e "s|\\\$RALPH_JSON|$RALPH_JSON|g" \
                  -e "s|\\\$PROGRESS_FILE|$PROGRESS_FILE|g" \
-                 -e "s|\\\$LEARNINGS_FILE|$LEARNINGS_FILE|g" \
-                 -e "s|\\\$PRIMARY_PLAN_PATH|$PRIMARY_PLAN_PATH|g" \
-                 -e "s|\\\$STORY_PLAN_PATH|${STORY_PLAN_PATH:---none--}|g" \
+                 -e "s|\\\$MEMORY_FILE|$MEMORY_FILE|g" \
                  -e "s|\\\$BRANCH_NAME|$BRANCH_NAME|g" \
-                 -e "s|\\\$STORY_ID|$STORY_ID|g" \
-                 -e "s|\\\$STORY_TITLE|$STORY_TITLE|g" \
-                 "$RALPH_DIR/.agents/ralph.md")
+                 -e "s|\\\$TASK_ID|$TASK_ID|g" \
+                 -e "s|\\\$TASK_TITLE|$TASK_TITLE|g" \
+                 -e "s|\\\$TASK_SOURCE|$TASK_SOURCE|g" \
+                 -e "s|\\\$SUMMARY_PATH|${SUMMARY_PATH:---none--}|g" \
+                 -e "s|\\\$DESIGN_PATH|${DESIGN_PATH:---none--}|g" \
+                 "$PLANNING_DIR/.agents/ralph.md")
   else
     PROMPT=$(generate_prompt "$TOOL" \
-      "$STORY_ID" \
-      "$STORY_TITLE" \
-      "$STORY_DESCRIPTION" \
-      "$STORY_CRITERIA" \
-      "$PRIMARY_PLAN_PATH" \
-      "$STORY_PLAN_PATH" \
-      "$LEARNINGS_FILE_EXISTS" \
+      "$TASK_ID" \
+      "$TASK_TITLE" \
+      "$TASK_SOURCE" \
+      "$SUMMARY_PATH" \
+      "$DESIGN_PATH" \
+      "$MEMORY_FILE_EXISTS" \
       "$BRANCH_NAME" \
-      "$UPDATE_STORY_CMD" \
-      "$RALPH_DIR" \
+      "$UPDATE_TASK_CMD" \
+      "$PLANNING_DIR" \
       "$RALPH_JSON" \
       "$PROGRESS_FILE" \
-      "$LEARNINGS_FILE" \
-      "$IS_LAST_STORY" \
+      "$MEMORY_FILE" \
+      "$IS_LAST_TASK" \
       "$LEARN_FLAG" \
       "$IGNORE_FLAG")
   fi
 
   if [[ -n "$DEBUG" ]]; then
     # Debug: Write prompt to file for inspection
-    DEBUG_PROMPT_FILE="$RALPH_DIR/DEBUG-generated-prompt.md"
+    DEBUG_PROMPT_FILE="$IMPL_DIR/DEBUG-generated-prompt.md"
     {
       echo "# Debug: Generated Prompt for Iteration $i"
       echo ""
       echo "## Environment Info"
       echo "- Current directory: $(pwd)"
-      echo "- RALPH_DIR: $RALPH_DIR"
+      echo "- PLANNING_DIR: $PLANNING_DIR"
       echo "- RALPH_JSON: $RALPH_JSON"
       echo "- WORKTREE_FLAG: $WORKTREE_FLAG"
       echo "- WORKTREE_DIR: ${WORKTREE_DIR:-N/A}"
@@ -1710,7 +1735,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     show_final_wall_time
     echo ""
 
-    FEATURE_NAME=$(basename "$RALPH_DIR")
+    FEATURE_NAME=$(basename "$PLANNING_DIR")
     # Find the start commit message
     START_COMMIT_MSG="ralph: Add $FEATURE_NAME project files"
     START_COMMIT=$(git log --format="%H" --grep="$START_COMMIT_MSG" -n 1)
@@ -1718,9 +1743,9 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     if [[ "$IGNORE_FLAG" == "false" && "$PRESERVE_FLAG" == "false" ]]; then
       if [[ -n "$START_COMMIT" ]]; then
         START_PARENT=$(git rev-parse "${START_COMMIT}^")
-        echo -e "${DIM}Scrubbing ralph directory from history ($START_PARENT..HEAD)...${NC}"
+        echo -e "${DIM}Scrubbing planning directory from history ($START_PARENT..HEAD)...${NC}"
         
-        if git filter-branch --force --index-filter "git rm -rf --cached --ignore-unmatch $RALPH_DIR" --prune-empty "$START_PARENT..HEAD" >/dev/null 2>&1; then
+        if git filter-branch --force --index-filter "git rm -rf --cached --ignore-unmatch $PLANNING_DIR" --prune-empty "$START_PARENT..HEAD" >/dev/null 2>&1; then
            echo -e "${GREEN}${E_SPARKLE} History scrubbed successfully!${NC}"
            # Delete the backup created by filter-branch
            rm -rf .git/refs/original/
@@ -1731,14 +1756,14 @@ for i in $(seq 1 $MAX_ITERATIONS); do
          echo -e "${DIM}Could not find start commit. Skipping history scrub.${NC}"
          echo -e "${DIM}Working files have been cleaned up in a separate commit.${NC}"
          echo -e "${DIM}To undo cleanup: git revert HEAD${NC}"
-         echo -e "${DIM}To recover files: git checkout HEAD~1 -- $RALPH_DIR/${NC}"
+         echo -e "${DIM}To recover files: git checkout HEAD~1 -- $PLANNING_DIR/${NC}"
       fi
     elif [[ "$IGNORE_FLAG" == "false" ]]; then
       echo -e "${DIM}Working files have been preserved.${NC}"
       echo -e "${DIM}To clean up preserving history:${NC}"
-      echo -e "  git rm -rf ralph/ && git commit -m \"ralph: Clean up ralph/ history\""
-      echo -e "${DIM}To completely remove from history (keeping the files in hte working tree):${NC}"
-      echo -e "  git filter-branch --force --index-filter \"git rm -rf --cached --ignore-unmatch $RALPH_DIR\" --prune-empty \"$START_PARENT..HEAD\"
+      echo -e "  git rm -rf $PLANNING_DIR/ && git commit -m \"ralph: Clean up $PLANNING_DIR/ history\""
+      echo -e "${DIM}To completely remove from history (keeping the files in the working tree):${NC}"
+      echo -e "  git filter-branch --force --index-filter \"git rm -rf --cached --ignore-unmatch $PLANNING_DIR\" --prune-empty \"\$START_PARENT..HEAD\""
     fi
 
     exit 0

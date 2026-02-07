@@ -1,38 +1,3 @@
-#!/usr/bin/env bash
-# Reset test-project to a clean initial state for re-running Ralph tests
-set -e
-
-cd "$(dirname "$0")"
-
-echo "Resetting test-project..."
-
-# Remove git directory
-rm -rf .git
-
-# Remove worktrees if any
-rm -rf .worktrees
-
-# Reset src/math.ts to original state with TODOs
-cat > src/math.ts << 'EOF'
-// Simple math utilities
-
-export function add(a: number, b: number): number {
-  return a + b;
-}
-
-export function subtract(a: number, b: number): number {
-  return a - b;
-}
-
-// TODO: Add multiply function
-// TODO: Add divide function
-// TODO: Add power function
-// TODO: Add modulo function
-// TODO: Add absolute value function
-EOF
-
-# Reset ralph.json with all tasks as passes: false
-cat > planning/add-math-functions/implementation/ralph.json << 'EOF'
 {
   "planningDir": "planning/add-math-functions",
   "project": "Add Missing Math Functions",
@@ -88,26 +53,3 @@ cat > planning/add-math-functions/implementation/ralph.json << 'EOF'
     }
   ]
 }
-EOF
-
-# Reset progress.md to empty header
-cat > planning/add-math-functions/implementation/progress.md << 'EOF'
-# Ralph Progress Log
-EOF
-
-# Reset memory.md (learnings file)
-cat > planning/add-math-functions/memory.md << 'EOF'
-# Add Missing Math Functions - Learnings
-EOF
-
-# Reset .gitignore
-cat > .gitignore << 'EOF'
-node_modules/
-EOF
-
-# Initialize fresh git repo
-git init
-git add .
-git commit -m "initial"
-
-echo "Done! Test project reset to clean state."
